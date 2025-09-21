@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { withCors } from '../_lib/cors';
 import Groq from 'groq-sdk';
 
 // Configuração da API Groq
@@ -194,20 +195,15 @@ function gerarSugestoes(mensagem: string, ingredientes?: string[]): string[] {
   return sugestoes.slice(0, 3);
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configurar CORS
-  // CORS: Permitir apenas a URL do frontend de produção
-  const allowedOrigin = process.env.FRONTEND_URL || 'https://catbutler-frontend.vercel.app';
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
+const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
+    res.status(405).json({ error: 'Método não permitido' });
+    return;
   }
 
   try {
@@ -219,10 +215,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }: ChatRequest = req.body;
 
     if (!mensagem || typeof mensagem !== 'string' || mensagem.trim().length === 0) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Mensagem é obrigatória'
       });
+      return;
     }
 
     console.log('💬 Nova mensagem para Chef IA:', mensagem);
@@ -233,7 +230,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const LIMITE_VISITANTE = 4;
       
       if (mensagensUsadas >= LIMITE_VISITANTE) {
-        return res.status(429).json({
+        res.status(429).json({
           success: false,
           error: 'Limite de mensagens atingido',
           data: {
@@ -245,6 +242,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
         });
+        return;
       }
     }
 
@@ -277,11 +275,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     console.log('✅ Resposta gerada com sucesso');
-    return res.status(200).json(response);
+  res.status(200).json(response);
+  return;
 
   } catch (error) {
     console.error('❌ Erro na API de chat:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
       data: {
@@ -289,5 +288,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         timestamp: Date.now()
       }
     });
+    return;
   }
 }
+
+export default withCors(handler);

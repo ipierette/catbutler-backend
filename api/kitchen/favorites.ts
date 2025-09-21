@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { withCors } from '../_lib/cors';
 
 // Configuração do Supabase (corrigido para SUPABASE_URL)
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -26,30 +27,21 @@ interface FavoritoRequest {
   coleção?: string;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configurar CORS
-  // CORS: Permitir apenas a URL do frontend de produção
-  const allowedOrigin = process.env.FRONTEND_URL || 'https://catbutler-frontend.vercel.app';
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   try {
     // Verificar autenticação
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      return res.status(401).json({ error: 'Token de autorização necessário' });
+      res.status(401).json({ error: 'Token de autorização necessário' });
+      return;
     }
 
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      return res.status(401).json({ error: 'Token inválido' });
+      res.status(401).json({ error: 'Token inválido' });
+      return;
     }
 
     const userId = user.id;
@@ -57,24 +49,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Routing baseado no método HTTP
     switch (req.method) {
       case 'GET':
-        return handleGetFavoritos(req, res, userId);
+        await handleGetFavoritos(req, res, userId); return;
       case 'POST':
-        return handleAddFavorito(req, res, userId);
+        await handleAddFavorito(req, res, userId); return;
       case 'PUT':
-        return handleUpdateFavorito(req, res, userId);
+        await handleUpdateFavorito(req, res, userId); return;
       case 'DELETE':
-        return handleRemoveFavorito(req, res, userId);
+        await handleRemoveFavorito(req, res, userId); return;
       default:
-        return res.status(405).json({ error: 'Método não permitido' });
+        res.status(405).json({ error: 'Método não permitido' }); return;
     }
 
   } catch (error) {
     console.error('❌ Erro na API de favoritos:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Erro interno do servidor' 
     });
+    return;
   }
-}
+};
+
+export default withCors(handler);
 
 // GET - Listar favoritos do usuário
 async function handleGetFavoritos(req: VercelRequest, res: VercelResponse, userId: string) {

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { withCors } from '../_lib/cors';
 import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
@@ -278,16 +279,9 @@ function calcularMatchScore(receitaIngredientes: string[], ingredientesUsuario: 
 }
 
 // Handler principal da API
-export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   const tempoInicio = Date.now();
   
-  // Configurar CORS
-  // CORS: Permitir apenas a URL do frontend de produção
-  const allowedOrigin = process.env.FRONTEND_URL || 'https://catbutler-frontend.vercel.app';
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -427,3 +421,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     });
   }
 }
+
+export default withCors(handler);
