@@ -223,6 +223,8 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     }
 
     console.log('💬 Nova mensagem para Chef IA:', mensagem);
+    console.log('[Chat] Ingredientes recebidos:', ingredientes);
+    console.log('[Chat] Contexto da conversa:', contextoConversa);
 
     // Verificar limites para visitantes
     if (isVisitorMode) {
@@ -252,6 +254,8 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
 
     // Gerar resposta da IA
     const respostaIA = await gerarRespostaIA(prompt);
+    console.log('[Chat] Prompt enviado para IA:', prompt);
+    console.log('[Chat] Resposta da IA:', respostaIA);
     
     // Gerar sugestões complementares
     const sugestoes = gerarSugestoes(mensagem, ingredientes);
