@@ -1,0 +1,45 @@
+{
+  "name": "catbutler-backend",
+  "version": "1.0.0",
+  "description": "CatButler - Backend API for personal productivity app",
+  "main": "index.js",
+  "type": "commonjs",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "dev:simple": "node scripts/dev-server.js",
+    "dev:full": "node scripts/full-dev-server.js",
+    "dev:test": "node scripts/test-server.js",
+    "build": "tsc",
+    "test": "node test-simple-login.js",
+    "test:diagnose": "node diagnose-auth.js",
+    "test:health": "node test-health-direct.js",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "catbutler",
+    "productivity",
+    "api",
+    "vercel",
+    "supabase"
+  ],
+  "author": "Izadora",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@huggingface/inference": "^4.8.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "@vercel/node": "^3.2.19",
+    "axios": "^1.12.2",
+    "dotenv": "^17.2.2",
+    "groq-sdk": "^0.32.0",
+    "typescript": "^5.9.2",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.15",
+    "vercel": "^32.0.1"
+  }
+}
