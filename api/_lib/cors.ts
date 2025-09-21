@@ -11,6 +11,11 @@ const ALLOWED_ORIGINS = [
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
 ].filter(Boolean) as string[]
 
+function logCorsDecision(origin: string | undefined, allowed: boolean) {
+  // Loga no Vercel (console.log vai para os logs do serverless)
+  console.log('[CORS] Origin:', origin, '| Allowed:', allowed, '| Allowed Origins:', ALLOWED_ORIGINS)
+}
+
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 const ALLOWED_HEADERS = [
   'Content-Type',
@@ -25,13 +30,20 @@ const ALLOWED_HEADERS = [
  */
 export function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
   const origin = req.headers.origin
+  const allowed = !!(origin && ALLOWED_ORIGINS.includes(origin))
+  logCorsDecision(origin, allowed)
 
-  // Verifica se a origem é permitida
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (allowed && origin) {
     res.setHeader('Access-Control-Allow-Origin', origin)
   } else {
     // Bloqueia requisições de origens não permitidas
     res.setHeader('Access-Control-Allow-Origin', 'null')
+    // Loga motivo detalhado
+    if (origin) {
+      console.warn('[CORS] Origin NÃO PERMITIDA:', origin)
+    } else {
+      console.warn('[CORS] Origin ausente no header!')
+    }
   }
 
   res.setHeader('Access-Control-Allow-Methods', ALLOWED_METHODS.join(', '))
