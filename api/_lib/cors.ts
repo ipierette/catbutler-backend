@@ -5,15 +5,21 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_URL || 'https://catbutler-frontend.vercel.app',
-  process.env.ALLOWED_ORIGIN || 'http://localhost:5173',
-  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-].filter(Boolean) as string[]
+function getAllowedOrigins(): string[] {
+  // Sempre inclui o domínio de produção e localhost
+  const origins = [
+    process.env.FRONTEND_URL,
+    process.env.ALLOWED_ORIGIN,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+    'https://catbutler-frontend.vercel.app',
+    'http://localhost:5173',
+  ].filter(Boolean) as string[]
+  return Array.from(new Set(origins))
+}
 
-function logCorsDecision(origin: string | undefined, allowed: boolean) {
+function logCorsDecision(origin: string | undefined, allowed: boolean, allowedOrigins: string[]) {
   // Loga no Vercel (console.log vai para os logs do serverless)
-  console.log('[CORS] Origin:', origin, '| Allowed:', allowed, '| Allowed Origins:', ALLOWED_ORIGINS)
+  console.log('[CORS] Origin:', origin, '| Allowed:', allowed, '| Allowed Origins:', allowedOrigins)
 }
 
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
@@ -30,8 +36,9 @@ const ALLOWED_HEADERS = [
  */
 export function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
   const origin = req.headers.origin
+  const ALLOWED_ORIGINS = getAllowedOrigins()
   const allowed = !!(origin && ALLOWED_ORIGINS.includes(origin))
-  logCorsDecision(origin, allowed)
+  logCorsDecision(origin, allowed, ALLOWED_ORIGINS)
 
   if (allowed && origin) {
     res.setHeader('Access-Control-Allow-Origin', origin)
