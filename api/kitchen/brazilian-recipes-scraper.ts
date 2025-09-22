@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/cors';
 import { createClient } from '@supabase/supabase-js';
+import axios from 'axios';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -568,6 +569,12 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       return;
     }
     
+    // Ação para scraper real de sites brasileiros
+    if (action === 'scrape-real') {
+      await scraperReal(res);
+      return;
+    }
+    
     console.log('🌐 Populando tabela com receitas brasileiras...');
     
     let inseridas = 0;
@@ -999,6 +1006,320 @@ function gerarReceitasMassivas(): ReceitaBrasileira[] {
   
   console.log(`🎯 Base massiva gerada: ${receitas.length} receitas`);
   return receitas;
+}
+
+// Função para scraper real de sites brasileiros
+async function scraperReal(res: VercelResponse): Promise<void> {
+  try {
+    console.log('🌐 Iniciando scraper real de sites brasileiros...');
+    
+    const receitasReais: ReceitaBrasileira[] = [];
+    let inseridas = 0;
+    let erros = 0;
+    
+    // === SCRAPER TUDOGOSTOSO ===
+    try {
+      console.log('🔍 Fazendo scraping do TudoGostoso...');
+      const receitasTG = await scraperTudoGostoso();
+      receitasReais.push(...receitasTG);
+      console.log(`✅ ${receitasTG.length} receitas do TudoGostoso`);
+    } catch (error) {
+      console.error('❌ Erro no scraper TudoGostoso:', error);
+    }
+    
+    // === SCRAPER PANELINHA ===
+    try {
+      console.log('🔍 Fazendo scraping da Panelinha...');
+      const receitasPN = await scraperPanelinha();
+      receitasReais.push(...receitasPN);
+      console.log(`✅ ${receitasPN.length} receitas da Panelinha`);
+    } catch (error) {
+      console.error('❌ Erro no scraper Panelinha:', error);
+    }
+    
+    // === INSERIR RECEITAS REAIS NO BANCO ===
+    for (const receita of receitasReais) {
+      try {
+        // Verificar duplicata
+        const { data: existente } = await supabase
+          .from('receitas')
+          .select('id')
+          .eq('nome', receita.nome)
+          .single();
+
+        if (existente) continue;
+
+        const { error } = await supabase
+          .from('receitas')
+          .insert({
+            nome: receita.nome,
+            categoria: receita.categoria,
+            origem: receita.origem,
+            instrucoes: receita.instrucoes,
+            ingredientes: receita.ingredientes,
+            tempo_estimado: receita.tempo_estimado,
+            dificuldade: receita.dificuldade,
+            imagem_url: receita.imagem_url,
+            fonte_url: receita.fonte_url,
+            fonte: receita.fonte,
+            ativo: true,
+            verificado: true
+          });
+
+        if (!error) {
+          inseridas++;
+          if (inseridas % 50 === 0) {
+            console.log(`✅ ${inseridas} receitas reais inseridas...`);
+          }
+        }
+
+      } catch (err) {
+        erros++;
+        console.error(`❌ Erro ao inserir receita real:`, err);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Scraper real concluído: ${inseridas} receitas reais inseridas`,
+      inseridas,
+      erros,
+      total_encontradas: receitasReais.length,
+      fontes: {
+        tudogostoso: receitasReais.filter(r => r.fonte === 'tudogostoso').length,
+        panelinha: receitasReais.filter(r => r.fonte === 'panelinha').length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no scraper real:', error);
+    res.status(500).json({ error: 'Erro no scraper real' });
+  }
+}
+
+// Scraper do TudoGostoso (receitas reais)
+async function scraperTudoGostoso(): Promise<ReceitaBrasileira[]> {
+  const receitas: ReceitaBrasileira[] = [];
+  
+  try {
+    // URLs de receitas populares do TudoGostoso
+    const urlsPopulares = [
+      'https://www.tudogostoso.com.br/receita/114-brigadeiro.html',
+      'https://www.tudogostoso.com.br/receita/115-beijinho.html',
+      'https://www.tudogostoso.com.br/receita/2998-feijoada.html',
+      'https://www.tudogostoso.com.br/receita/2999-coxinha-de-frango.html',
+      'https://www.tudogostoso.com.br/receita/133-bolo-de-cenoura.html',
+      'https://www.tudogostoso.com.br/receita/31-pudim-de-leite-condensado.html',
+      'https://www.tudogostoso.com.br/receita/77-quindim.html',
+      'https://www.tudogostoso.com.br/receita/166-pao-de-queijo.html',
+      'https://www.tudogostoso.com.br/receita/23-strogonoff-de-carne.html',
+      'https://www.tudogostoso.com.br/receita/44-lasanha-a-bolonhesa.html'
+    ];
+    
+    // Para cada URL, fazer scraping real
+    for (const url of urlsPopulares) {
+      try {
+        console.log(`🔍 Fazendo scraping: ${url}`);
+        
+        const response = await axios.get(url, {
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; CatButler-Bot/1.0)'
+          }
+        });
+        
+        const html = response.data;
+        const receita = extrairReceitaTudoGostoso(html, url);
+        
+        if (receita) {
+          receitas.push(receita);
+          console.log(`✅ Receita extraída: ${receita.nome}`);
+        }
+        
+        // Delay para não sobrecarregar servidor
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        console.error(`❌ Erro ao fazer scraping de ${url}:`, error);
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro geral no scraper TudoGostoso:', error);
+  }
+  
+  return receitas;
+}
+
+// Extrair dados reais do HTML do TudoGostoso
+function extrairReceitaTudoGostoso(html: string, url: string): ReceitaBrasileira | null {
+  try {
+    // Parsing básico do HTML (sem biblioteca externa)
+    // Buscar título
+    const tituloMatch = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
+    const nome = tituloMatch ? tituloMatch[1].replace(/<[^>]*>/g, '').trim() : 'Receita do TudoGostoso';
+    
+    // Buscar ingredientes (procurar por listas)
+    const ingredientesMatch = html.match(/<ul[^>]*class="[^"]*ingredientes[^"]*"[^>]*>(.*?)<\/ul>/is);
+    const ingredientes: string[] = [];
+    
+    if (ingredientesMatch) {
+      const itensMatch = ingredientesMatch[1].match(/<li[^>]*>(.*?)<\/li>/g);
+      if (itensMatch) {
+        itensMatch.forEach(item => {
+          const texto = item.replace(/<[^>]*>/g, '').trim();
+          if (texto) ingredientes.push(texto);
+        });
+      }
+    }
+    
+    // Fallback para ingredientes se não encontrou
+    if (ingredientes.length === 0) {
+      ingredientes.push('ingredientes conforme receita original');
+    }
+    
+    // Buscar modo de preparo
+    const preparoMatch = html.match(/<div[^>]*class="[^"]*preparo[^"]*"[^>]*>(.*?)<\/div>/is);
+    let instrucoes = 'Consulte a receita original para modo de preparo completo.';
+    
+    if (preparoMatch) {
+      instrucoes = preparoMatch[1].replace(/<[^>]*>/g, '').trim().substring(0, 500);
+    }
+    
+    // Buscar imagem
+    const imagemMatch = html.match(/<img[^>]*src="([^"]*)"[^>]*alt="[^"]*receita[^"]*"/i);
+    const imagem_url = imagemMatch ? imagemMatch[1] : 'https://img.tudogostoso.com.br/images/default-recipe.jpg';
+    
+    return {
+      nome,
+      categoria: determinarCategoria(nome),
+      origem: 'TudoGostoso',
+      instrucoes,
+      ingredientes,
+      tempo_estimado: '30min', // Default
+      dificuldade: 'Médio',   // Default
+      imagem_url,
+      fonte_url: url,
+      fonte: 'tudogostoso'
+    };
+    
+  } catch (error) {
+    console.error('❌ Erro ao extrair receita do HTML:', error);
+    return null;
+  }
+}
+
+// Scraper da Panelinha (receitas reais)
+async function scraperPanelinha(): Promise<ReceitaBrasileira[]> {
+  const receitas: ReceitaBrasileira[] = [];
+  
+  // URLs conhecidas da Panelinha
+  const urlsPanelinha = [
+    'https://www.panelinha.com.br/receita/arroz-de-carreteiro',
+    'https://www.panelinha.com.br/receita/moqueca-capixaba',
+    'https://www.panelinha.com.br/receita/bobo-de-camarao',
+    'https://www.panelinha.com.br/receita/risoto-de-camarao',
+    'https://www.panelinha.com.br/receita/carbonara-brasileira'
+  ];
+  
+  for (const url of urlsPanelinha) {
+    try {
+      console.log(`🔍 Scraping Panelinha: ${url}`);
+      
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; CatButler-Bot/1.0)'
+        }
+      });
+      
+      const receita = extrairReceitaPanelinha(response.data, url);
+      if (receita) {
+        receitas.push(receita);
+        console.log(`✅ Receita Panelinha: ${receita.nome}`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+    } catch (error) {
+      console.error(`❌ Erro scraping Panelinha ${url}:`, error);
+    }
+  }
+  
+  return receitas;
+}
+
+// Extrair dados reais do HTML da Panelinha
+function extrairReceitaPanelinha(html: string, url: string): ReceitaBrasileira | null {
+  try {
+    // Parsing específico para Panelinha
+    const tituloMatch = html.match(/<title>(.*?)<\/title>/i);
+    const nome = tituloMatch ? tituloMatch[1].replace(' - Panelinha', '').trim() : 'Receita da Panelinha';
+    
+    // Buscar ingredientes
+    const ingredientes: string[] = [];
+    const ingredientesMatch = html.match(/<div[^>]*class="[^"]*ingredients[^"]*"[^>]*>(.*?)<\/div>/is);
+    
+    if (ingredientesMatch) {
+      const itens = ingredientesMatch[1].match(/>\s*([^<]+)\s*</g);
+      if (itens) {
+        itens.forEach(item => {
+          const texto = item.replace(/[><]/g, '').trim();
+          if (texto && texto.length > 2) ingredientes.push(texto);
+        });
+      }
+    }
+    
+    if (ingredientes.length === 0) {
+      ingredientes.push('ingredientes conforme receita original');
+    }
+    
+    return {
+      nome,
+      categoria: determinarCategoria(nome),
+      origem: 'Panelinha',
+      instrucoes: 'Receita completa disponível no site da Panelinha. Acesse o link original para modo de preparo detalhado.',
+      ingredientes,
+      tempo_estimado: '45min',
+      dificuldade: 'Médio',
+      imagem_url: extrairImagemPanelinha(html),
+      fonte_url: url,
+      fonte: 'panelinha'
+    };
+    
+  } catch (error) {
+    console.error('❌ Erro ao extrair receita Panelinha:', error);
+    return null;
+  }
+}
+
+// Determinar categoria baseada no nome
+function determinarCategoria(nome: string): string {
+  const nomeLower = nome.toLowerCase();
+  
+  if (nomeLower.includes('brigadeiro') || nomeLower.includes('pudim') || nomeLower.includes('bolo') || nomeLower.includes('doce')) {
+    return 'Sobremesas';
+  }
+  if (nomeLower.includes('sopa') || nomeLower.includes('canja') || nomeLower.includes('caldo')) {
+    return 'Sopas';
+  }
+  if (nomeLower.includes('macarrão') || nomeLower.includes('lasanha') || nomeLower.includes('risoto')) {
+    return 'Massas';
+  }
+  if (nomeLower.includes('coxinha') || nomeLower.includes('pastel') || nomeLower.includes('empada')) {
+    return 'Salgados';
+  }
+  if (nomeLower.includes('salada')) {
+    return 'Saladas';
+  }
+  
+  return 'Pratos Principais';
+}
+
+// Extrair imagem da Panelinha
+function extrairImagemPanelinha(html: string): string {
+  const imagemMatch = html.match(/<img[^>]*src="([^"]*)"[^>]*class="[^"]*recipe[^"]*"/i);
+  return imagemMatch ? imagemMatch[1] : 'https://www.panelinha.com.br/images/default-recipe.jpg';
 }
 
 export default withCors(handler);
