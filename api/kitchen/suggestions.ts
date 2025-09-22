@@ -2,8 +2,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/cors';
 import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import axios from 'axios';
-import { traduzirReceita, traduzirIngredientesParaIngles } from '../_lib/tradutor-cozinha';
 import { BancoDadosReceitas } from '../_lib/banco-receitas';
 
 // Configuração das APIs de IA
@@ -11,25 +9,8 @@ const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GE
 const geminiModel = genAI ? genAI.getGenerativeModel({ model: 'gemini-pro' }) : null;
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
-// Interface para receitas do TheMealDB
-interface MealDBRecipe {
-  idMeal: string;
-  strMeal: string;
-  strDrinkAlternate?: string;
-  strCategory: string;
-  strArea: string;
-  strInstructions: string;
-  strMealThumb: string;
-  strTags?: string;
-  strYoutube?: string;
-  [key: string]: string | undefined;
-}
+// Interface simplificada para receitas
 
-interface MealDBResponse {
-  meals: MealDBRecipe[] | null;
-}
-
-// Interface para nossa resposta padronizada
 interface ReceitaSugerida {
   id: string;
   nome: string;
@@ -40,9 +21,11 @@ interface ReceitaSugerida {
   imagem: string;
   tempoEstimado: string;
   dificuldade: string;
-  tags?: string[];
-  fonte: 'mealdb' | 'ia' | 'local';
+  fonte: 'local' | 'ia';
+  tipo: string;
+  rating: number;
   matchScore?: number;
+  dicaEspecial?: string;
 }
 
 interface SugestaoResponse {
@@ -52,216 +35,15 @@ interface SugestaoResponse {
     ingredientesPesquisados: string[];
     total: number;
     fontes: {
-      local: number;
-      mealdb: number;
-      ia: number;
+      brasileiras: number;
+      ia_criativas: number;
     };
     tempoResposta: number;
   };
   error?: string;
 }
 
-// Função para buscar receitas do TheMealDB por ingrediente
-async function buscarReceitasPorIngrediente(ingrediente: string): Promise<MealDBResponse> {
-  try {
-    const response = await axios.get(
-      `https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(ingrediente)}`
-    );
-    return response.data;
-  } catch (error) {
-    console.error(`Erro ao buscar receitas para ${ingrediente}:`, error);
-    return { meals: null };
-  }
-}
-
-// Função para obter detalhes completos de uma receita
-async function obterDetalhesReceita(idMeal: string): Promise<MealDBRecipe | null> {
-  try {
-    const response = await axios.get(
-      `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${idMeal}`
-    );
-    return response.data.meals?.[0] || null;
-  } catch (error) {
-    console.error(`Erro ao obter detalhes da receita ${idMeal}:`, error);
-    return null;
-  }
-}
-
-// Função para extrair ingredientes de uma receita do MealDB
-function extrairIngredientes(meal: MealDBRecipe): string[] {
-  const ingredientes: string[] = [];
-  
-  for (let i = 1; i <= 20; i++) {
-    const ingrediente = meal[`strIngredient${i}`];
-    const medida = meal[`strMeasure${i}`];
-    if (ingrediente?.trim()) {
-      const item = medida?.trim() ? `${medida.trim()} ${ingrediente.trim()}` : ingrediente.trim();
-      ingredientes.push(item);
-    }
-  }
-  
-  return ingredientes;
-}
-
-// Função para converter receita do MealDB para nosso formato
-function converterReceitaMealDB(meal: MealDBRecipe): ReceitaSugerida {
-  const ingredientes = extrairIngredientes(meal);
-  
-  // Estimar tempo baseado na quantidade de ingredientes e instruções
-  let tempoEstimado: string;
-  if (ingredientes.length > 10) {
-    tempoEstimado = '45-60min';
-  } else if (ingredientes.length > 5) {
-    tempoEstimado = '30-45min';
-  } else {
-    tempoEstimado = '15-30min';
-  }
-  
-  // Estimar dificuldade baseada no número de ingredientes e tamanho das instruções
-  const numIngredientes = ingredientes.length;
-  const tamanhoInstrucoes = meal.strInstructions.length;
-  
-  let dificuldade = 'Fácil';
-  if (numIngredientes > 12 || tamanhoInstrucoes > 1000) {
-    dificuldade = 'Difícil';
-  } else if (numIngredientes > 7 || tamanhoInstrucoes > 500) {
-    dificuldade = 'Médio';
-  }
-  
-  const receita = {
-    id: meal.idMeal,
-    nome: meal.strMeal,
-    categoria: meal.strCategory,
-    origem: meal.strArea,
-    ingredientes,
-    instrucoes: meal.strInstructions,
-    imagem: meal.strMealThumb,
-    tempoEstimado,
-    dificuldade,
-    tags: meal.strTags ? meal.strTags.split(',').map(tag => tag.trim()) : [],
-    fonte: 'mealdb' as const
-  };
-
-  // Traduzir receita para PT-BR
-  return traduzirReceita(receita);
-}
-
-// Função para gerar sugestões usando Gemini (primário) ou Groq (fallback)
-async function gerarSugestoesIA(ingredientes: string[]): Promise<ReceitaSugerida[]> {
-  try {
-    console.log('🤖 Gerando sugestões com IA para:', ingredientes);
-    // Tentar Gemini primeiro (melhor para criação de receitas)
-    if (geminiModel) {
-      try {
-        return await gerarSugestoesGemini(ingredientes);
-      } catch (geminiError) {
-        console.warn('⚠️ Gemini falhou, tentando Groq:', geminiError);
-      }
-    }
-    // Fallback para Groq
-    if (groq) {
-      return await gerarSugestoesGroq(ingredientes);
-    }
-    return [];
-  } catch (error) {
-    console.error('❌ Erro ao gerar sugestões IA:', error);
-    return [];
-  }
-}
-
-// Geração de receitas usando Gemini (ideal para conteúdo criativo)
-async function gerarSugestoesGemini(ingredientes: string[]): Promise<ReceitaSugerida[]> {
-  const prompt = `Como chef especialista, crie 1 receita brasileira deliciosa e prática usando principalmente: ${ingredientes.join(', ')}.
-
-Responda EXATAMENTE neste formato JSON:
-{
-  "nome": "Nome da receita",
-  "categoria": "Categoria (ex: Prato Principal, Sobremesa)",
-  "ingredientes": ["${ingredientes.join('", "')}", "outros ingredientes necessários"],
-  "instrucoes": "Passo a passo detalhado do preparo",
-  "tempo": "15-30min",
-  "dificuldade": "Fácil",
-  "origem": "Brasileiro"
-}`;
-
-  const result = await geminiModel!.generateContent(prompt);
-  const response = result.response;
-  const text = await response.text();
-  try {
-    // Extrair JSON da resposta
-    const jsonMatch = /\{[\s\S]*\}/.exec(text);
-    if (!jsonMatch) throw new Error('JSON não encontrado na resposta');
-    const receitaData = JSON.parse(jsonMatch[0]);
-    const sugestaoGemini: ReceitaSugerida = {
-      id: `gemini-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-      nome: receitaData.nome || `Receita com ${ingredientes[0]}`,
-      categoria: receitaData.categoria || 'Prato Principal',
-      origem: receitaData.origem || 'Brasileiro',
-      ingredientes: receitaData.ingredientes || [...ingredientes, 'sal a gosto', 'temperos'],
-      instrucoes: receitaData.instrucoes || 'Instruções não disponíveis',
-      imagem: '/images/receita-gemini-placeholder.jpg',
-      tempoEstimado: receitaData.tempo || '30min',
-      dificuldade: receitaData.dificuldade || 'Fácil',
-      fonte: 'ia',
-      matchScore: 95
-    };
-    console.log('✅ Receita gerada com Gemini:', sugestaoGemini.nome);
-    return [sugestaoGemini];
-  } catch (parseError) {
-    console.warn('⚠️ Erro ao parsear resposta Gemini, usando fallback');
-    throw parseError;
-  }
-}
-
-
-// Fallback usando Groq
-async function gerarSugestoesGroq(ingredientes: string[]): Promise<ReceitaSugerida[]> {
-  if (!groq) throw new Error('Groq não configurado');
-  const prompt = `Como chef especialista, crie 1 receita brasileira deliciosa e prática usando principalmente: ${ingredientes.join(', ')}.\n\nResponda EXATAMENTE neste formato JSON:\n{\n  "nome": "Nome da receita",\n  "categoria": "Categoria (ex: Prato Principal, Sobremesa)",\n  "ingredientes": ["${ingredientes.join('", "')}", "outros ingredientes necessários"],\n  "instrucoes": "Passo a passo detalhado do preparo",\n  "tempo": "15-30min",\n  "dificuldade": "Fácil",\n  "origem": "Brasileiro"\n}`;
-  const completion = await groq.chat.completions.create({
-    messages: [
-      {
-        role: 'system',
-        content: 'Você é um Chef IA especialista em culinária brasileira e internacional. Responda sempre em português brasileiro, seja prestativo e didático.'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-    model: 'llama3-8b-8192',
-    temperature: 0.7,
-    max_tokens: 300,
-    top_p: 1,
-    stream: false
-  });
-  const resposta = completion.choices[0]?.message?.content || '';
-  try {
-    const jsonMatch = /\{[\s\S]*\}/.exec(resposta);
-    if (!jsonMatch) throw new Error('JSON não encontrado na resposta');
-    const receitaData = JSON.parse(jsonMatch[0]);
-    const sugestaoGroq: ReceitaSugerida = {
-      id: `groq-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-      nome: receitaData.nome || `Receita com ${ingredientes[0]}`,
-      categoria: receitaData.categoria || 'Prato Principal',
-      origem: receitaData.origem || 'Brasileiro',
-      ingredientes: receitaData.ingredientes || [...ingredientes, 'sal a gosto', 'temperos'],
-      instrucoes: receitaData.instrucoes || 'Instruções não disponíveis',
-      imagem: '/images/receita-groq-placeholder.jpg',
-      tempoEstimado: receitaData.tempo || '30min',
-      dificuldade: receitaData.dificuldade || 'Fácil',
-      fonte: 'ia',
-      matchScore: 90
-    };
-    console.log('✅ Receita gerada com Groq:', sugestaoGroq.nome);
-    return [sugestaoGroq];
-  } catch (parseError) {
-    console.warn('⚠️ Erro ao parsear resposta Groq:', parseError);
-    return [];
-  }
-}
-
-// Função para calcular score de match entre ingredientes
+// Função para calcular compatibilidade de ingredientes
 function calcularMatchScore(receitaIngredientes: string[], ingredientesUsuario: string[]): number {
   const ingredientesUsuarioLower = ingredientesUsuario.map(ing => ing.toLowerCase());
   let matches = 0;
@@ -278,7 +60,86 @@ function calcularMatchScore(receitaIngredientes: string[], ingredientesUsuario: 
   return Math.round((matches / Math.max(receitaIngredientes.length, ingredientesUsuario.length)) * 100);
 }
 
-// Handler principal da API
+// IA para sugestões criativas (NOVO: sem TheMealDB, sem tradução)
+async function gerarSugestoesCreativasIA(ingredientes: string[]): Promise<ReceitaSugerida[]> {
+  const prompt = `Você é o Chef Bruno, especialista em culinária brasileira criativa.
+
+INGREDIENTES DISPONÍVEIS: ${ingredientes.join(', ')}
+
+TAREFA: Criar 2 receitas CRIATIVAS e PRÁTICAS usando principalmente estes ingredientes.
+
+REGRAS IMPORTANTES:
+1. Use PELO MENOS 70% dos ingredientes fornecidos
+2. Seja CRIATIVO mas PRÁTICO para casa
+3. Foque em SABORES BRASILEIROS
+4. Máximo 3 ingredientes extras por receita
+5. Instruções claras e detalhadas
+
+RESPONDA APENAS COM JSON VÁLIDO:
+[
+  {
+    "nome": "Nome criativo da receita",
+    "categoria": "Categoria (ex: Prato Principal, Sobremesa)",
+    "ingredientes": ["${ingredientes.join('", "')}", "ingrediente extra 1", "ingrediente extra 2"],
+    "instrucoes": "1. Passo detalhado\\n2. Segundo passo\\n3. Terceiro passo\\n4. Finalização",
+    "tempo_estimado": "30min",
+    "dificuldade": "Fácil",
+    "dica_especial": "Dica única do Chef Bruno"
+  }
+]`;
+
+  try {
+    let resposta = '';
+    
+    // Tentar Gemini primeiro (melhor para criatividade)
+    if (genAI) {
+      const result = await genAI.getGenerativeModel({ model: 'gemini-pro' }).generateContent(prompt);
+      resposta = result.response.text();
+    }
+    // Fallback para Groq
+    else if (groq) {
+      const result = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
+          { role: 'user', content: prompt }
+        ],
+        model: 'mixtral-8x7b-32768',
+        temperature: 0.8,
+        max_tokens: 1500
+      });
+      resposta = result.choices[0]?.message?.content || '';
+    } else {
+      throw new Error('Nenhuma IA configurada');
+    }
+
+    // Limpar e parsear resposta
+    const jsonLimpo = resposta.replace(/```json|```/g, '').trim();
+    const receitasIA = JSON.parse(jsonLimpo);
+    
+    return receitasIA.map((receita: any, index: number) => ({
+      id: `ia-${Date.now()}-${index}`,
+      nome: receita.nome,
+      categoria: receita.categoria,
+      origem: 'Chef Bruno IA',
+      ingredientes: receita.ingredientes,
+      instrucoes: receita.instrucoes,
+      imagem: '/images/receita-ia-placeholder.jpg',
+      tempoEstimado: receita.tempo_estimado,
+      dificuldade: receita.dificuldade,
+      fonte: 'ia' as const,
+      tipo: 'Sugestão Criativa',
+      rating: 4.3,
+      dicaEspecial: receita.dica_especial
+    }));
+
+  } catch (error) {
+    console.error('❌ Erro na IA criativa:', error);
+    return [];
+  }
+}
+
+
+// Handler principal da API - SIMPLIFICADO (sem TheMealDB)
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   const tempoInicio = Date.now();
   
@@ -304,99 +165,56 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     }
 
     console.log('🔍 Buscando sugestões para ingredientes:', ingredientes);
-
     const receitasEncontradas: ReceitaSugerida[] = [];
 
-    // 1. BUSCAR NO BANCO LOCAL (receitas dos usuários)
+    // 1. BUSCAR RECEITAS BRASILEIRAS REAIS (banco local)
     try {
-      console.log('🗃️ Buscando receitas no banco local...');
-      const resultadoLocal = await BancoDadosReceitas.buscarPorIngredientes(ingredientes, 5);
+      console.log('🗃️ Buscando receitas brasileiras no banco...');
+      const resultadoLocal = await BancoDadosReceitas.buscarPorIngredientes(ingredientes, 6);
       
       if (resultadoLocal.receitasLocais.length > 0) {
         const receitasLocais = resultadoLocal.receitasLocais.map(receita => ({
           id: receita.id,
           nome: receita.nome,
           categoria: receita.categoria || 'Diversos',
-          origem: receita.area_culinaria || 'Local',
+          origem: receita.area_culinaria || 'Brasil',
           ingredientes: receita.ingredientes,
           instrucoes: receita.instrucoes,
           imagem: receita.imagem_url || '/images/receita-placeholder.jpg',
           tempoEstimado: receita.tempo_minutos ? `${receita.tempo_minutos}min` : '30min',
           dificuldade: receita.dificuldade || 'Médio',
-          tags: receita.tags || [],
           fonte: 'local' as const,
+          tipo: 'Receita Brasileira',
+          rating: 4.5,
           matchScore: calcularMatchScore(receita.ingredientes, ingredientes)
         }));
         
         receitasEncontradas.push(...receitasLocais);
-        console.log(`✅ Encontradas ${receitasLocais.length} receitas no banco local`);
+        console.log(`✅ ${receitasLocais.length} receitas brasileiras encontradas`);
       }
     } catch (error) {
-      console.error('⚠️ Erro ao buscar no banco local (continuando):', error);
+      console.error('⚠️ Erro ao buscar receitas locais:', error);
     }
 
-    // 2. BUSCAR NA API TheMealDB COM TRADUÇÃO
+    // 2. GERAR SUGESTÕES CRIATIVAS COM IA
     try {
-      console.log('🌐 Buscando receitas no TheMealDB...');
-      
-      // Traduzir ingredientes para inglês para melhorar busca
-      const ingredientesEn = traduzirIngredientesParaIngles(ingredientes);
-      console.log('🔤 Ingredientes traduzidos:', ingredientes, '->', ingredientesEn);
-      
-      // Tentar buscar com o primeiro ingrediente traduzido
-      const ingredientePrincipal = ingredientesEn[0] || ingredientes[0];
-      const resultadoMealDB = await buscarReceitasPorIngrediente(ingredientePrincipal);
-      
-      if (resultadoMealDB.meals) {
-        // Limitar a 4 receitas para não sobrecarregar
-        const receitasLimitadas = resultadoMealDB.meals.slice(0, 4);
-        
-        for (const meal of receitasLimitadas) {
-          const detalhes = await obterDetalhesReceita(meal.idMeal);
-          if (detalhes) {
-            const receitaConvertida = converterReceitaMealDB(detalhes);
-            receitaConvertida.matchScore = calcularMatchScore(
-              receitaConvertida.ingredientes,
-              ingredientes
-            );
-            receitasEncontradas.push(receitaConvertida);
-          }
-        }
-        console.log(`✅ Encontradas ${receitasLimitadas.length} receitas no TheMealDB`);
-      }
-    } catch (error) {
-      console.error('⚠️ Erro ao buscar no TheMealDB (continuando):', error);
-    }
-
-    // 3. GERAR SUGESTÕES COM IA
-    try {
-      console.log('🤖 Gerando sugestões com IA...');
-      const sugestoesIA = await gerarSugestoesIA(ingredientes);
+      console.log('🤖 Gerando sugestões criativas com IA...');
+      const sugestoesIA = await gerarSugestoesCreativasIA(ingredientes);
       receitasEncontradas.push(...sugestoesIA);
-      console.log(`✅ Geradas ${sugestoesIA.length} sugestões com IA`);
+      console.log(`✅ ${sugestoesIA.length} sugestões criativas geradas`);
     } catch (error) {
-      console.error('⚠️ Erro ao gerar sugestões IA (continuando):', error);
+      console.error('⚠️ Erro ao gerar sugestões IA:', error);
     }
 
-    // 4. ORDENAR E LIMITAR RESULTADOS
-    // Priorizar: Local > IA > TheMealDB, depois por match score
+    // 3. ORDENAR RESULTADOS (receitas reais primeiro, depois IA)
     receitasEncontradas.sort((a, b) => {
-      // Prioridade por fonte
-      const prioridadeFonte = { local: 3, ia: 2, mealdb: 1 };
-      const prioridadeA = prioridadeFonte[a.fonte];
-      const prioridadeB = prioridadeFonte[b.fonte];
-      
-      if (prioridadeA !== prioridadeB) {
-        return prioridadeB - prioridadeA;
+      if (a.fonte !== b.fonte) {
+        return a.fonte === 'local' ? -1 : 1;
       }
-      
-      // Se mesma fonte, ordenar por match score
       return (b.matchScore || 0) - (a.matchScore || 0);
     });
 
-    // Limitar a 12 receitas máximo
-    const receitasFinais = receitasEncontradas.slice(0, 12);
-
+    const receitasFinais = receitasEncontradas.slice(0, 10);
     const tempoResposta = Date.now() - tempoInicio;
 
     const response: SugestaoResponse = {
@@ -406,16 +224,15 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
         ingredientesPesquisados: ingredientes,
         total: receitasFinais.length,
         fontes: {
-          local: receitasFinais.filter(r => r.fonte === 'local').length,
-          mealdb: receitasFinais.filter(r => r.fonte === 'mealdb').length,
-          ia: receitasFinais.filter(r => r.fonte === 'ia').length
+          brasileiras: receitasFinais.filter(r => r.fonte === 'local').length,
+          ia_criativas: receitasFinais.filter(r => r.fonte === 'ia').length
         },
         tempoResposta
       }
     };
 
     console.log(`✅ Sugestões geradas: ${receitasFinais.length} receitas em ${tempoResposta}ms`);
-    console.log(`📊 Fontes: Local(${response.data.fontes.local}) + MealDB(${response.data.fontes.mealdb}) + IA(${response.data.fontes.ia})`);
+    console.log(`📊 Fontes: Brasileiras(${response.data.fontes.brasileiras}) + IA(${response.data.fontes.ia_criativas})`);
 
     res.status(200).json(response);
 

@@ -2,29 +2,27 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { withCors } from '../_lib/cors';
 
-// Configuração do Supabase (corrigido para SUPABASE_URL)
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-interface ReceitaFavorita {
-  id: string;
-  user_id: string;
-  receita_id: string;
+interface FavoritoRequestExpandido {
+  receita_id?: string;
+  
+  // Dados completos da receita (para auto-criação)
+  nome?: string;
+  categoria?: string;
+  origem?: string;
+  instrucoes?: string;
+  ingredientes?: string[];
+  tempo_estimado?: string;
+  dificuldade?: string;
+  imagem_url?: string;
+  fonte?: string;
+  
+  // Dados do favorito
   notas?: string;
   rating?: number;
   tags_pessoais?: string[];
-  coleção?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface FavoritoRequest {
-  receita_id: string;
-  notas?: string;
-  rating?: number;
-  tags_pessoais?: string[];
-  coleção?: string;
+  colecao?: string;
 }
 
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
@@ -49,205 +47,150 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     // Routing baseado no método HTTP
     switch (req.method) {
       case 'GET':
-        await handleGetFavoritos(req, res, userId); return;
+        await handleGetFavoritos(req, res, userId);
+        return;
       case 'POST':
-        await handleAddFavorito(req, res, userId); return;
-      case 'PUT':
-        await handleUpdateFavorito(req, res, userId); return;
+        await handleAddFavorito(req, res, userId);
+        return;
       case 'DELETE':
-        await handleRemoveFavorito(req, res, userId); return;
+        await handleRemoveFavorito(req, res, userId);
+        return;
       default:
-        res.status(405).json({ error: 'Método não permitido' }); return;
+        res.status(405).json({ error: 'Método não permitido' });
+        return;
     }
 
   } catch (error) {
     console.error('❌ Erro na API de favoritos:', error);
-    res.status(500).json({ 
-      error: 'Erro interno do servidor' 
-    });
-    return;
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 };
 
-export default withCors(handler);
-
-// GET - Listar favoritos do usuário
+// GET - Listar favoritos
 async function handleGetFavoritos(req: VercelRequest, res: VercelResponse, userId: string) {
   try {
-    const { coleção } = req.query;
-
-    let query = supabase
+    const { data, error } = await supabase
       .from('receitas_favoritas')
       .select(`
         *,
         receitas (
-          id,
-          nome,
-          categoria,
-          origem,
-          imagem_url,
-          tempo_estimado,
-          dificuldade,
-          fonte
+          id, nome, categoria, origem, imagem_url, 
+          tempo_estimado, dificuldade, fonte, fonte_url
         )
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (coleção && typeof coleção === 'string') {
-      query = query.eq('coleção', coleção);
-    }
+    if (error) throw error;
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Erro ao buscar favoritos:', error);
-      return res.status(500).json({ error: 'Erro ao buscar favoritos' });
-    }
-
-    return res.status(200).json({
+    res.json({
       success: true,
-      data: {
-        favoritos: data || [],
-        total: data?.length || 0
-      }
+      data: { favoritos: data || [], total: data?.length || 0 }
     });
 
   } catch (error) {
-    console.error('Erro em handleGetFavoritos:', error);
-    return res.status(500).json({ error: 'Erro interno' });
+    console.error('❌ Erro ao listar favoritos:', error);
+    res.status(500).json({ error: 'Erro ao buscar favoritos' });
+    return;
   }
 }
 
-// POST - Adicionar receita aos favoritos
-async function handleAddFavorito(req: VercelRequest, res: VercelResponse, userId: string) {
+// POST - Adicionar favorito (com auto-criação de receita)
+async function handleAddFavorito(req: VercelRequest, res: VercelResponse, userId: string): Promise<void> {
   try {
-    const { 
-      receita_id, 
-      notas, 
-      rating, 
-      tags_pessoais, 
-      coleção = 'Favoritos' 
-    }: FavoritoRequest = req.body;
-
-    if (!receita_id) {
-      return res.status(400).json({ error: 'receita_id é obrigatório' });
+    const dados: FavoritoRequestExpandido = req.body;
+    
+    let receitaId = dados.receita_id;
+    
+    // Se não tem receita_id mas tem dados da receita, criar receita primeiro
+    if (!receitaId && dados.nome && dados.ingredientes) {
+      console.log('🔄 Criando receita automaticamente:', dados.nome);
+      
+      const { data: novaReceita, error: receitaError } = await supabase
+        .from('receitas')
+        .insert({
+          nome: dados.nome,
+          categoria: dados.categoria || 'Diversos',
+          origem: dados.origem || 'Chef Bruno IA',
+          instrucoes: dados.instrucoes || 'Instruções não disponíveis',
+          ingredientes: dados.ingredientes,
+          tempo_estimado: dados.tempo_estimado || '30min',
+          dificuldade: dados.dificuldade || 'Médio',
+          imagem_url: dados.imagem_url || '/images/receita-placeholder.jpg',
+          fonte: dados.fonte || 'ia',
+          ativo: true,
+          verificado: dados.fonte !== 'ia'
+        })
+        .select('id')
+        .single();
+        
+      if (receitaError) throw receitaError;
+      receitaId = novaReceita.id;
+      console.log('✅ Receita criada com ID:', receitaId);
+    }
+    
+    if (!receitaId) {
+      res.status(400).json({ error: 'receita_id é obrigatório ou forneça dados completos da receita' });
+      return;
     }
 
-    // Verificar se a receita existe
-    const { data: receita, error: receitaError } = await supabase
-      .from('receitas')
-      .select('id')
-      .eq('id', receita_id)
-      .single();
-
-    if (receitaError || !receita) {
-      return res.status(404).json({ error: 'Receita não encontrada' });
-    }
-
-    // Inserir favorito
+    // Adicionar aos favoritos
     const { data, error } = await supabase
       .from('receitas_favoritas')
       .insert({
         user_id: userId,
-        receita_id,
-        notas,
-        rating,
-        tags_pessoais,
-        coleção
+        receita_id: receitaId,
+        notas: dados.notas,
+        rating: dados.rating,
+        tags_pessoais: dados.tags_pessoais,
+        colecao: dados.colecao || 'Favoritos'
       })
       .select()
       .single();
 
-    if (error) {
-      if (error.code === '23505') { // Unique constraint violation
-        return res.status(409).json({ error: 'Receita já está nos favoritos' });
-      }
-      console.error('Erro ao adicionar favorito:', error);
-      return res.status(500).json({ error: 'Erro ao adicionar favorito' });
-    }
+    if (error) throw error;
 
-    return res.status(201).json({
+    res.json({
       success: true,
-      data: { favorito: data }
+      message: 'Favorito adicionado com sucesso',
+      data
     });
 
   } catch (error) {
-    console.error('Erro em handleAddFavorito:', error);
-    return res.status(500).json({ error: 'Erro interno' });
+    console.error('❌ Erro ao adicionar favorito:', error);
+    res.status(500).json({ error: 'Erro ao adicionar favorito' });
+    return;
   }
 }
 
-// PUT - Atualizar favorito
-async function handleUpdateFavorito(req: VercelRequest, res: VercelResponse, userId: string) {
+// DELETE - Remover favorito
+async function handleRemoveFavorito(req: VercelRequest, res: VercelResponse, userId: string): Promise<void> {
   try {
-    const { receita_id } = req.query;
-    const { notas, rating, tags_pessoais, coleção } = req.body;
-
-    if (!receita_id) {
-      return res.status(400).json({ error: 'receita_id é obrigatório' });
-    }
-
-    const { data, error } = await supabase
-      .from('receitas_favoritas')
-      .update({
-        ...(notas !== undefined && { notas }),
-        ...(rating !== undefined && { rating }),
-        ...(tags_pessoais !== undefined && { tags_pessoais }),
-        ...(coleção !== undefined && { coleção })
-      })
-      .eq('user_id', userId)
-      .eq('receita_id', receita_id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao atualizar favorito:', error);
-      return res.status(500).json({ error: 'Erro ao atualizar favorito' });
-    }
-
-    if (!data) {
-      return res.status(404).json({ error: 'Favorito não encontrado' });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: { favorito: data }
-    });
-
-  } catch (error) {
-    console.error('Erro em handleUpdateFavorito:', error);
-    return res.status(500).json({ error: 'Erro interno' });
-  }
-}
-
-// DELETE - Remover dos favoritos
-async function handleRemoveFavorito(req: VercelRequest, res: VercelResponse, userId: string) {
-  try {
-    const { receita_id } = req.query;
-
-    if (!receita_id) {
-      return res.status(400).json({ error: 'receita_id é obrigatório' });
+    const { id } = req.body;
+    
+    if (!id) {
+      res.status(400).json({ error: 'ID do favorito é obrigatório' });
+      return;
     }
 
     const { error } = await supabase
       .from('receitas_favoritas')
       .delete()
-      .eq('user_id', userId)
-      .eq('receita_id', receita_id);
+      .eq('id', id)
+      .eq('user_id', userId);
 
-    if (error) {
-      console.error('Erro ao remover favorito:', error);
-      return res.status(500).json({ error: 'Erro ao remover favorito' });
-    }
+    if (error) throw error;
 
-    return res.status(200).json({
+    res.json({
       success: true,
-      message: 'Receita removida dos favoritos'
+      message: 'Favorito removido com sucesso'
     });
 
   } catch (error) {
-    console.error('Erro em handleRemoveFavorito:', error);
-    return res.status(500).json({ error: 'Erro interno' });
+    console.error('❌ Erro ao remover favorito:', error);
+    res.status(500).json({ error: 'Erro ao remover favorito' });
+    return;
   }
 }
+
+export default withCors(handler);

@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS public.receitas (
     tags TEXT[], -- Array de tags
     
     -- Fonte e qualidade
-    fonte VARCHAR(20) NOT NULL CHECK (fonte IN ('mealdb', 'ia', 'local')),
+    fonte VARCHAR(20) NOT NULL CHECK (fonte IN ('mealdb', 'ia', 'local', 'tudogostoso', 'panelinha', 'cybercook')),
+    fonte_url TEXT, -- Link original da receita
     relevancia_score INTEGER DEFAULT 50 CHECK (relevancia_score >= 0 AND relevancia_score <= 100),
     
     -- Status e moderação
@@ -161,41 +162,78 @@ CREATE TRIGGER update_receitas_favoritas_updated_at
 -- =====================================================
 -- 7. INSERIR RECEITAS DE EXEMPLO (OPCIONAL)
 -- =====================================================
--- Algumas receitas básicas para teste
-INSERT INTO public.receitas (nome, categoria, origem, instrucoes, ingredientes, tempo_estimado, dificuldade, fonte, imagem_url)
+-- Receitas brasileiras populares para teste
+INSERT INTO public.receitas (nome, categoria, origem, instrucoes, ingredientes, tempo_estimado, dificuldade, fonte, imagem_url, fonte_url, ativo, verificado)
 VALUES 
     (
-        'Frango Grelhado Simples',
-        'Carnes',
-        'Brasil',
-        'Tempere o frango com sal, pimenta e alho. Grelhe por 15 minutos de cada lado até dourar.',
-        ARRAY['frango', 'sal', 'pimenta', 'alho'],
-        '30min',
+        'Brigadeiro Tradicional',
+        'Sobremesas',
+        'TudoGostoso',
+        'Em uma panela, misture o leite condensado, o chocolate em pó e a manteiga. Cozinhe em fogo médio, mexendo sempre, até desgrudar do fundo da panela. Deixe esfriar, faça bolinhas e passe no granulado.',
+        ARRAY['leite condensado', 'chocolate em pó', 'manteiga', 'granulado'],
+        '20min',
         'Fácil',
-        'local',
-        '/images/frango-grelhado.jpg'
+        'tudogostoso',
+        'https://img.tudogostoso.com.br/imagens/receitas/000/000/114/brigadeiro.jpg',
+        'https://www.tudogostoso.com.br/receita/114-brigadeiro.html',
+        true,
+        true
     ),
     (
-        'Omelete de Queijo',
-        'Ovos',
-        'Brasil',
-        'Bata os ovos, adicione o queijo e frite na frigideira com manteiga.',
-        ARRAY['ovos', 'queijo', 'manteiga'],
-        '15min',
-        'Fácil',
-        'local',
-        '/images/omelete-queijo.jpg'
+        'Coxinha de Frango',
+        'Salgados',
+        'TudoGostoso',
+        'Prepare o recheio refogando frango desfiado com temperos. Faça a massa com água, margarina e farinha. Modele as coxinhas, empane e frite em óleo quente.',
+        ARRAY['frango', 'farinha de trigo', 'margarina', 'cebola', 'alho', 'farinha de rosca', 'ovo'],
+        '1h30min',
+        'Médio',
+        'tudogostoso',
+        'https://img.tudogostoso.com.br/imagens/receitas/000/002/999/coxinha.jpg',
+        'https://www.tudogostoso.com.br/receita/2999-coxinha-de-frango.html',
+        true,
+        true
     ),
     (
-        'Arroz com Feijão',
+        'Arroz de Carreteiro',
         'Pratos Principais',
-        'Brasil',
-        'Refogue o arroz, adicione água e cozinhe. Prepare o feijão com temperos.',
-        ARRAY['arroz', 'feijão', 'cebola', 'alho'],
+        'Panelinha',
+        'Refogue a cebola e alho. Adicione a carne seca já dessalgada e desfiada. Junte o arroz e refogue bem. Adicione água quente aos poucos até cozinhar o arroz.',
+        ARRAY['arroz', 'carne seca', 'cebola', 'alho', 'óleo', 'sal'],
         '45min',
         'Médio',
-        'local',
-        '/images/arroz-feijao.jpg'
+        'panelinha',
+        'https://img.panelinha.com.br/receita/arroz-carreteiro.jpg',
+        'https://www.panelinha.com.br/receita/arroz-carreteiro',
+        true,
+        true
+    ),
+    (
+        'Bolo de Cenoura',
+        'Sobremesas',
+        'TudoGostoso',
+        'Bata no liquidificador cenouras, ovos e óleo. Misture com farinha, açúcar e fermento. Asse por 40min. Para a cobertura, derreta chocolate com leite condensado.',
+        ARRAY['cenoura', 'ovos', 'óleo', 'farinha de trigo', 'açúcar', 'fermento', 'chocolate em pó', 'leite condensado'],
+        '1h',
+        'Fácil',
+        'tudogostoso',
+        'https://img.tudogostoso.com.br/imagens/receitas/000/000/133/bolo-cenoura.jpg',
+        'https://www.tudogostoso.com.br/receita/133-bolo-de-cenoura.html',
+        true,
+        true
+    ),
+    (
+        'Farofa de Linguiça',
+        'Acompanhamentos',
+        'TudoGostoso',
+        'Frite a linguiça em cubos até dourar. Adicione cebola e alho picados. Junte a farinha de mandioca aos poucos, mexendo sempre. Tempere com sal.',
+        ARRAY['linguiça', 'farinha de mandioca', 'cebola', 'alho', 'óleo', 'sal'],
+        '25min',
+        'Fácil',
+        'tudogostoso',
+        'https://img.tudogostoso.com.br/imagens/receitas/000/000/156/farofa-linguica.jpg',
+        'https://www.tudogostoso.com.br/receita/156-farofa-de-linguica.html',
+        true,
+        true
     )
 ON CONFLICT (external_id) DO NOTHING;
 
