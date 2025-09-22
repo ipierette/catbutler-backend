@@ -87,7 +87,7 @@ async function traduzirParaIngles(texto: string): Promise<string> {
     return textoTraduzido;
     
   } catch (error) {
-    console.warn('⚠️ Erro na tradução PT→EN, usando original:', error.message);
+    console.warn('⚠️ Erro na tradução PT→EN, usando original:', (error as Error).message);
     return texto;
   }
 }
@@ -110,7 +110,7 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
     return textoTraduzido;
     
   } catch (error) {
-    console.warn('⚠️ Erro na tradução EN→PT, usando original:', error.message);
+    console.warn('⚠️ Erro na tradução EN→PT, usando original:', (error as Error).message);
     return texto;
   }
 }
@@ -129,7 +129,7 @@ async function buscarReceitasTheMealDB(ingrediente: string): Promise<MealDBRespo
     return response.data;
     
   } catch (error) {
-    console.error(`❌ Erro ao buscar no TheMealDB para ${ingrediente}:`, error.message);
+    console.error(`❌ Erro ao buscar no TheMealDB para ${ingrediente}:`, (error as Error).message);
     return { meals: null };
   }
 }
@@ -144,7 +144,7 @@ async function obterDetalhesTheMealDB(idMeal: string): Promise<MealDBRecipe | nu
     return response.data.meals?.[0] || null;
     
   } catch (error) {
-    console.error(`❌ Erro ao obter detalhes da receita ${idMeal}:`, error.message);
+    console.error(`❌ Erro ao obter detalhes da receita ${idMeal}:`, (error as Error).message);
     return null;
   }
 }
@@ -277,8 +277,17 @@ function calcularMatchScore(receitaIngredientes: string[], ingredientesUsuario: 
   return Math.round((matches / Math.max(receitaIngredientes.length, ingredientesUsuario.length)) * 100);
 }
 
-// IA para sugestões criativas (NOVO: sem TheMealDB, sem tradução)
+// IA para sugestões criativas com debug de APIs
 async function gerarSugestoesCreativasIA(ingredientes: string[]): Promise<ReceitaSugerida[]> {
+  console.log('🔍 Debug APIs de IA:', {
+    GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+    GROQ_API_KEY: !!process.env.GROQ_API_KEY,
+    HF_TOKEN_COZINHA: !!process.env.HF_TOKEN_COZINHA,
+    HF_TOKEN_MERCADO: !!process.env.HF_TOKEN_MERCADO,
+    genAI_disponivel: !!genAI,
+    groq_disponivel: !!groq
+  });
+
   const prompt = `Você é o Chef Bruno, especialista em culinária brasileira criativa.
 
 INGREDIENTES DISPONÍVEIS: ${ingredientes.join(', ')}
@@ -307,26 +316,67 @@ RESPONDA APENAS COM JSON VÁLIDO:
 
   try {
     let resposta = '';
+    let modeloUsado = '';
     
-    // Tentar Gemini primeiro (melhor para criatividade)
-    if (genAI) {
-      const result = await genAI.getGenerativeModel({ model: 'gemini-pro' }).generateContent(prompt);
-      resposta = result.response.text();
+    // Tentar Gemini primeiro
+    if (genAI && process.env.GEMINI_API_KEY) {
+      try {
+        console.log('🤖 Tentando Gemini...');
+        const result = await genAI.getGenerativeModel({ model: 'gemini-pro' }).generateContent(prompt);
+        resposta = result.response.text();
+        modeloUsado = 'Gemini';
+        console.log('✅ Gemini funcionou!');
+      } catch (geminiError) {
+        console.error('❌ Gemini falhou:', (geminiError as Error).message);
+      }
     }
+    
     // Fallback para Groq
-    else if (groq) {
-      const result = await groq.chat.completions.create({
-        messages: [
-          { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
-          { role: 'user', content: prompt }
-        ],
-        model: 'mixtral-8x7b-32768',
-        temperature: 0.8,
-        max_tokens: 1500
-      });
-      resposta = result.choices[0]?.message?.content || '';
-    } else {
-      throw new Error('Nenhuma IA configurada');
+    if (!resposta && groq && process.env.GROQ_API_KEY) {
+      try {
+        console.log('🤖 Tentando Groq...');
+        const result = await groq.chat.completions.create({
+          messages: [
+            { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
+            { role: 'user', content: prompt }
+          ],
+          model: 'mixtral-8x7b-32768',
+          temperature: 0.8,
+          max_tokens: 1500
+        });
+        resposta = result.choices[0]?.message?.content || '';
+        modeloUsado = 'Groq';
+        console.log('✅ Groq funcionou!');
+      } catch (groqError) {
+        console.error('❌ Groq falhou:', (groqError as Error).message);
+      }
+    }
+    
+    // Fallback para HuggingFace
+    if (!resposta && (process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO)) {
+      try {
+        console.log('🤖 Tentando HuggingFace...');
+        const hfToken = process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO;
+        
+        const response = await axios.post(
+          'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large',
+          { inputs: prompt },
+          {
+            headers: { 'Authorization': `Bearer ${hfToken}` },
+            timeout: 15000
+          }
+        );
+        
+        resposta = response.data[0]?.generated_text || '';
+        modeloUsado = 'HuggingFace';
+        console.log('✅ HuggingFace funcionou!');
+      } catch (hfError) {
+        console.error('❌ HuggingFace falhou:', (hfError as Error).message);
+      }
+    }
+    
+    if (!resposta) {
+      throw new Error('Todas as APIs de IA falharam ou não estão configuradas');
     }
 
     // Limpar e parsear resposta
@@ -344,13 +394,14 @@ RESPONDA APENAS COM JSON VÁLIDO:
       tempoEstimado: receita.tempo_estimado,
       dificuldade: receita.dificuldade,
       fonte: 'ia' as const,
-      tipo: 'Sugestão Criativa',
+      tipo: `Sugestão Criativa (${modeloUsado})`,
       rating: 4.3,
       dicaEspecial: receita.dica_especial
     }));
 
   } catch (error) {
-    console.error('❌ Erro na IA criativa:', error);
+    console.error('❌ Erro na IA criativa:', (error as Error).message);
+    console.log('🔧 Debug: Nenhuma API de IA está funcionando. Verifique as chaves no Vercel.');
     return [];
   }
 }
@@ -404,7 +455,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
           tipo: 'Receita Local',
           rating: 4.5,
           matchScore: calcularMatchScore(receita.ingredientes, ingredientes),
-          fonte_url: receita.fonte_url || undefined
+          fonte_url: (receita as any).fonte_url || undefined
         }));
         
         receitasEncontradas.push(...receitasLocais);
