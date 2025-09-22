@@ -427,47 +427,37 @@ async function traduzirIngredientesOtimizado(ingredientes: string[]): Promise<st
   }
 }
 
-// Traduzir texto automático (função auxiliar - múltiplos servidores)
+// Traduzir texto automático (função auxiliar - UMA tentativa apenas)
 async function traduzirTextoAutomatico(texto: string): Promise<string | null> {
   try {
-    console.log(`🌐 Tentando traduzir: "${texto}" em ${LIBRE_TRANSLATE_URLS.length} servidores...`);
+    console.log(`🌐 Tentando traduzir: "${texto}" (uma tentativa)`);
 
-    // Tentar cada servidor disponível
-    for (const url of LIBRE_TRANSLATE_URLS) {
-      try {
-        console.log(`📡 Tentando servidor: ${url}`);
+    // Tentar apenas o primeiro servidor disponível
+    const url = LIBRE_TRANSLATE_URLS[0];
 
-        const response = await axios.post(url, {
-          q: texto,
-          source: 'pt',
-          target: 'en',
-          format: 'text'
-        }, {
-          timeout: 5000,
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'CatButler/1.0'
-          }
-        });
-
-        const textoTraduzido = response.data.translatedText || response.data.result;
-        if (textoTraduzido && textoTraduzido !== texto) {
-          console.log(`✅ Traduzido em ${url}: "${texto}" → "${textoTraduzido}"`);
-          return textoTraduzido;
-        }
-
-      } catch (serverError: any) {
-        console.warn(`⚠️ Servidor ${url} falhou: ${serverError.response?.status || serverError.message}`);
-        // Tentar próximo servidor
-        continue;
+    const response = await axios.post(url, {
+      q: texto,
+      source: 'pt',
+      target: 'en',
+      format: 'text'
+    }, {
+      timeout: 3000,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'CatButler/1.0'
       }
+    });
+
+    const textoTraduzido = response.data.translatedText || response.data.result;
+    if (textoTraduzido && textoTraduzido !== texto) {
+      console.log(`✅ Traduzido: "${texto}" → "${textoTraduzido}"`);
+      return textoTraduzido;
     }
 
-    console.warn('⚠️ Todos os servidores de tradução falharam');
     return null;
 
   } catch (error) {
-    console.warn('⚠️ Tradução automática falhou completamente');
+    console.warn(`⚠️ Tradução falhou: ${(error as Error).message || 'Erro desconhecido'}`);
     return null;
   }
 }
@@ -515,41 +505,29 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
       return textoTraduzido;
     }
 
-    // Para textos curtos (nome, categoria, origem), usar tradução automática
+    // Para textos curtos (nome, categoria, origem), usar tradução automática - UMA tentativa
     if (texto.length < 100) {
-      for (let tentativa = 1; tentativa <= 2; tentativa++) {
-        try {
-          const response = await axios.post(LIBRE_TRANSLATE_URLS[0], {
-            q: texto,
-            source: 'en',
-            target: 'pt',
-            format: 'text'
-          }, {
-            timeout: 5000,
-            headers: {
-              'Content-Type': 'application/json',
-              'User-Agent': 'CatButler/1.0'
-            }
-          });
-
-          const textoTraduzido = response.data.translatedText || response.data.result;
-          if (textoTraduzido && textoTraduzido !== texto) {
-            console.log(`✅ Traduzido: "${texto}" → "${textoTraduzido}"`);
-            return textoTraduzido;
+      try {
+        const response = await axios.post(LIBRE_TRANSLATE_URLS[0], {
+          q: texto,
+          source: 'en',
+          target: 'pt',
+          format: 'text'
+        }, {
+          timeout: 3000,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'CatButler/1.0'
           }
+        });
 
-        } catch (retryError: any) {
-          console.warn(`⚠️ Tentativa ${tentativa} falhou para "${texto}"`);
-          if (tentativa === 2) {
-            // Se erro 429 (quota), não tentar novamente
-            if (retryError.response?.status === 429) {
-              console.warn('⚠️ Quota de tradução esgotada, usando fallback');
-              break;
-            }
-            throw retryError;
-          }
-          await new Promise(resolve => setTimeout(resolve, 500 * tentativa));
+        const textoTraduzido = response.data.translatedText || response.data.result;
+        if (textoTraduzido && textoTraduzido !== texto) {
+          console.log(`✅ Traduzido: "${texto}" → "${textoTraduzido}"`);
+          return textoTraduzido;
         }
+      } catch (error: any) {
+        console.warn(`⚠️ Tradução falhou para "${texto}"`);
       }
     }
 
@@ -795,114 +773,61 @@ RESPONDA APENAS COM JSON VÁLIDO:
     let resposta = '';
     let modeloUsado = '';
     
-    // Tentar Gemini primeiro (modelo atualizado)
+    // Tentar apenas uma API de IA por vez (sem múltiplas tentativas)
     if (genAI && process.env.GEMINI_API_KEY) {
       try {
-        console.log('🤖 Tentando Gemini 1.5 Flash...');
+        console.log('🤖 Tentando Gemini 1.5 Flash (única tentativa)...');
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         const result = await model.generateContent(prompt);
         resposta = result.response.text();
         modeloUsado = 'Gemini 1.5 Flash';
-        console.log('✅ Gemini 1.5 Flash funcionou!');
+        console.log('✅ Gemini funcionou!');
       } catch (geminiError) {
-        console.error('❌ Gemini 1.5 Flash falhou:', (geminiError as Error).message);
-        // Tentar fallback para gemini-pro se disponível
-        try {
-          console.log('🤖 Tentando Gemini Pro (fallback)...');
-          const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-          const result = await model.generateContent(prompt);
-          resposta = result.response.text();
-          modeloUsado = 'Gemini Pro';
-          console.log('✅ Gemini Pro funcionou!');
-        } catch (proError) {
-          console.error('❌ Gemini Pro também falhou:', (proError as Error).message);
-        }
+        console.error('❌ Gemini falhou, tentando próxima API');
       }
     }
     
-    // Fallback para Groq (modelos estáveis)
+    // Fallback para Groq (modelos que realmente existem)
     if (!resposta && groq && process.env.GROQ_API_KEY) {
       try {
-        console.log('🤖 Tentando Groq Llama 3.2 3B...');
+        console.log('🤖 Tentando Groq Mixtral...');
         const result = await groq.chat.completions.create({
           messages: [
             { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
             { role: 'user', content: prompt }
           ],
-          model: 'llama3.2-3b-preview', // Modelo pequeno e estável
+          model: 'mixtral-8x7b-32768', // Modelo que realmente existe
           temperature: 0.8,
           max_tokens: 1500
         });
         resposta = result.choices[0]?.message?.content || '';
-        modeloUsado = 'Groq Llama 3.2';
-        console.log('✅ Groq Llama 3.2 funcionou!');
+        modeloUsado = 'Groq Mixtral';
+        console.log('✅ Groq Mixtral funcionou!');
       } catch (groqError) {
-        console.error('❌ Groq Llama 3.2 falhou:', (groqError as Error).message);
-        // Tentar modelo ainda mais simples
-        try {
-          console.log('🤖 Tentando Groq Llama 3.2 1B (alternativo)...');
-          const result = await groq.chat.completions.create({
-            messages: [
-              { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
-              { role: 'user', content: prompt }
-            ],
-            model: 'llama3.2-1b-preview', // Modelo ainda menor
-            temperature: 0.8,
-            max_tokens: 1500
-          });
-          resposta = result.choices[0]?.message?.content || '';
-          modeloUsado = 'Groq Llama 3.2 1B';
-          console.log('✅ Groq Llama 3.2 1B funcionou!');
-        } catch (llama1bError) {
-          console.error('❌ Groq Llama 3.2 1B também falhou:', (llama1bError as Error).message);
-        }
+        console.error('❌ Groq Mixtral falhou, tentando próxima API');
       }
     }
     
-    // Fallback para HuggingFace (modelos gratuitos e acessíveis)
+    // Fallback para HuggingFace (apenas um modelo que funciona)
     if (!resposta && (process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO)) {
       try {
-        console.log('🤖 Tentando HuggingFace T5 Base...');
+        console.log('🤖 Tentando HuggingFace (única tentativa)...');
         const hfToken = process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO;
 
-        // Tentar T5 Base (modelo gratuito e estável)
-        try {
-          const response = await axios.post(
-            'https://api-inference.huggingface.co/models/google-t5/t5-base',
-            { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
-            {
-              headers: { 'Authorization': `Bearer ${hfToken}` },
-              timeout: 15000
-            }
-          );
-
-          resposta = response.data[0]?.generated_text || '';
-          modeloUsado = 'HuggingFace T5';
-          console.log('✅ HuggingFace T5 funcionou!');
-        } catch (t5Error) {
-          console.error('❌ HuggingFace T5 falhou:', (t5Error as Error).message);
-
-          // Tentar FLAN-T5 como fallback (também gratuito)
-          try {
-            console.log('🤖 Tentando HuggingFace FLAN-T5...');
-            const response = await axios.post(
-              'https://api-inference.huggingface.co/models/google/flan-t5-base',
-              { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
-              {
-                headers: { 'Authorization': `Bearer ${hfToken}` },
-                timeout: 15000
-              }
-            );
-
-            resposta = response.data[0]?.generated_text || '';
-            modeloUsado = 'HuggingFace FLAN-T5';
-            console.log('✅ HuggingFace FLAN-T5 funcionou!');
-          } catch (flanError) {
-            console.error('❌ HuggingFace FLAN-T5 também falhou:', (flanError as Error).message);
+        const response = await axios.post(
+          'https://api-inference.huggingface.co/models/google/flan-t5-base',
+          { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
+          {
+            headers: { 'Authorization': `Bearer ${hfToken}` },
+            timeout: 10000
           }
-        }
+        );
+
+        resposta = response.data[0]?.generated_text || '';
+        modeloUsado = 'HuggingFace FLAN-T5';
+        console.log('✅ HuggingFace funcionou!');
       } catch (hfError) {
-        console.error('❌ HuggingFace falhou:', (hfError as Error).message);
+        console.error('❌ HuggingFace falhou');
       }
     }
     

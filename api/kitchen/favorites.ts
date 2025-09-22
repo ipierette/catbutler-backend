@@ -30,7 +30,11 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     // Verificar autenticação
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      res.status(401).json({ error: 'Token de autorização necessário' });
+      console.warn('❌ Tentativa de acesso aos favoritos sem autenticação');
+      res.status(401).json({
+        error: 'Você precisa estar logado para acessar favoritos',
+        details: 'Nenhum token de autorização fornecido'
+      });
       return;
     }
 
@@ -38,9 +42,15 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      res.status(401).json({ error: 'Token inválido' });
+      console.warn('❌ Token inválido ou expirado:', authError?.message);
+      res.status(401).json({
+        error: 'Sessão expirada ou inválida',
+        details: 'Faça login novamente para continuar'
+      });
       return;
     }
+
+    console.log('✅ Usuário autenticado:', user.email);
 
     const userId = user.id;
 
