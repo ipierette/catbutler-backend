@@ -15,6 +15,80 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SE
 const LIBRE_TRANSLATE_URL = 'https://libretranslate.com/translate';
 const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
 
+// Mapeamento de títulos comuns do TheMealDB EN → PT (expandido)
+const TITULOS_COMUNS: Record<string, string> = {
+  // Receitas com Chicken
+  'chicken congee': 'Congee de Frango',
+  'brown stew chicken': 'Frango Ensopado Marrom',
+  'chicken & mushroom hotpot': 'Frango com Cogumelos ao Forno',
+  'chicken alfredo primavera': 'Frango Alfredo Primavera',
+  'chicken fajita mac and cheese': 'Macarrão com Queijo e Fajita de Frango',
+  'chicken marengo': 'Frango Marengo',
+  'chicken parmentier': 'Parmentier de Frango',
+  'chicken quinoa greek salad': 'Salada Grega de Frango com Quinoa',
+  'chicken tikka masala': 'Frango Tikka Masala',
+  'chicken enchilada casserole': 'Caçarola de Enchilada de Frango',
+  'chicken basque': 'Frango Basco',
+  'chicken ham and leek pie': 'Torta de Frango, Presunto e Alho-poró',
+  'chicken handi': 'Frango Handi',
+  'chicken karaage': 'Frango Karaage',
+  'chicken katsu': 'Frango Katsu',
+  'chicken teriyaki': 'Frango Teriyaki',
+
+  // Receitas com Beef
+  'beef banh mi bowls': 'Tigelas de Banh Mi de Carne',
+  'beef stroganoff': 'Estrogonofe de Carne',
+  'beef wellington': 'Wellington de Carne',
+  'beef and mustard pie': 'Torta de Carne com Mostarda',
+  'beef rendang': 'Rendang de Carne',
+  'beef dumpling stew': 'Ensopado de Bolinhos de Carne',
+  'beef mechado': 'Mechado de Carne',
+  'beef lo mein': 'Lo Mein de Carne',
+  'beef bourguignon': 'Bourguignon de Carne',
+  'beef sunday roast': 'Assado Dominical de Carne',
+
+  // Receitas com outros ingredientes
+  'egyptian fatteh': 'Fatteh Egípcio',
+  'spanish lamb stew': 'Ensopado de Cordeiro Espanhol',
+  'lamb tagine': 'Tajine de Cordeiro',
+  'lamb biryani': 'Biryani de Cordeiro',
+  'fish pie': 'Torta de Peixe',
+  'seafood paella': 'Paella de Frutos do Mar',
+  'vegetarian casserole': 'Caçarola Vegetariana',
+  'vegan chocolate cake': 'Bolo de Chocolate Vegano',
+  'chocolate gateau': 'Gateau de Chocolate',
+  'pasta salad': 'Salada de Macarrão',
+
+  // Adicionar padrões genéricos
+  'with': 'com',
+  'and': 'e',
+  'chicken': 'Frango',
+  'beef': 'Carne',
+  'lamb': 'Cordeiro',
+  'fish': 'Peixe',
+  'seafood': 'Frutos do Mar',
+  'vegetarian': 'Vegetariano',
+  'vegan': 'Vegano',
+  'salad': 'Salada',
+  'soup': 'Sopa',
+  'stew': 'Ensopado',
+  'curry': 'Caril',
+  'pie': 'Torta',
+  'cake': 'Bolo',
+  'pasta': 'Massa',
+  'rice': 'Arroz',
+  'noodles': 'Macarrão',
+  'sauce': 'Molho',
+  'spicy': 'Picante',
+  'hot': 'Quente',
+  'cold': 'Frio',
+  'roast': 'Assado',
+  'grilled': 'Grelhado',
+  'fried': 'Frito',
+  'baked': 'Assado',
+  'steamed': 'Cozido no Vapor'
+};
+
 // Mapeamento de categorias e origens do TheMealDB EN → PT
 const CATEGORIAS_ORIGENS: Record<string, string> = {
   // Categorias
@@ -224,6 +298,108 @@ async function traduzirParaIngles(texto: string): Promise<string> {
   }
 }
 
+// Traduzir título de receita especificamente (mais robusto)
+async function traduzirTituloReceita(texto: string): Promise<string> {
+  try {
+    if (!texto || texto.trim().length === 0) {
+      return texto;
+    }
+
+    console.log(`🍽️ Traduzindo título: "${texto}"`);
+
+    // Primeiro, verificar mapeamento exato
+    const textoLower = texto.toLowerCase();
+    if (TITULOS_COMUNS[textoLower]) {
+      const traducao = TITULOS_COMUNS[textoLower];
+      console.log(`✅ Título exato mapeado: "${texto}" → "${traducao}"`);
+      return traducao;
+    }
+
+    // Tentar tradução parcial
+    let textoTraduzido = textoLower;
+    let substituicoes = 0;
+    for (const [ingles, portugues] of Object.entries(TITULOS_COMUNS)) {
+      if (textoTraduzido.includes(ingles) && ingles.length > 2) {
+        textoTraduzido = textoTraduzido.replace(new RegExp(ingles, 'gi'), portugues);
+        substituicoes++;
+        console.log(`🔄 Substituição: "${ingles}" → "${portugues}"`);
+      }
+    }
+
+    // Se houve substituições, capitalizar adequadamente
+    if (substituicoes > 0) {
+      textoTraduzido = textoTraduzido.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+      console.log(`✅ Tradução parcial: "${texto}" → "${textoTraduzido}" (${substituicoes} substituições)`);
+      return textoTraduzido;
+    }
+
+    // Se não houve substituições, tentar tradução automática
+    console.log(`🤖 Tentando tradução automática para título: "${texto}"`);
+    const traducaoAuto = await traduzirTextoAutomatico(texto);
+    if (traducaoAuto) {
+      console.log(`✅ Tradução automática: "${texto}" → "${traducaoAuto}"`);
+      return traducaoAuto;
+    }
+
+    // Fallback: usar IA para títulos complexos
+    if (genAI && process.env.GEMINI_API_KEY) {
+      try {
+        console.log(`🧠 Usando IA para título complexo: "${texto}"`);
+        const prompt = `Traduza este título de receita de inglês para português brasileiro de forma natural e precisa. Mantenha o estilo de título de receita:
+
+"${texto}"
+
+Responda apenas com a tradução.`;
+
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await model.generateContent(prompt);
+        const traducao = result.response.text().trim();
+
+        if (traducao && traducao !== texto) {
+          console.log(`✅ IA traduzido: "${texto}" → "${traducao}"`);
+          return traducao;
+        }
+      } catch (aiError) {
+        console.warn('⚠️ IA falhou para título:', (aiError as Error).message);
+      }
+    }
+
+    // Último fallback: retornar original
+    console.warn(`⚠️ Fallback: usando título original "${texto}"`);
+    return texto;
+
+  } catch (error) {
+    console.warn(`❌ Erro na tradução de título "${texto}":`, (error as Error).message);
+    return texto;
+  }
+}
+
+// Traduzir texto automático (função auxiliar)
+async function traduzirTextoAutomatico(texto: string): Promise<string | null> {
+  try {
+    const response = await axios.post(LIBRE_TRANSLATE_URL, {
+      q: texto,
+      source: 'en',
+      target: 'pt',
+      format: 'text'
+    }, {
+      timeout: 8000,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'CatButler/1.0'
+      }
+    });
+
+    const textoTraduzido = response.data.translatedText || response.data.result;
+    return textoTraduzido && textoTraduzido !== texto ? textoTraduzido : null;
+
+  } catch (error) {
+    return null;
+  }
+}
+
 // Traduzir texto inglês para português (para respostas do TheMealDB) - MELHORADO
 async function traduzirParaPortugues(texto: string): Promise<string> {
   try {
@@ -234,12 +410,37 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
 
     console.log(`🔤 Traduzindo: "${texto}" (${texto.length} chars)`);
 
-    // Primeiro, verificar se é categoria ou origem conhecida
+    // Primeiro, verificar se é título conhecido (caso exato)
     const textoLower = texto.toLowerCase();
+    if (TITULOS_COMUNS[textoLower]) {
+      const traducao = TITULOS_COMUNS[textoLower];
+      console.log(`✅ Título mapeado: "${texto}" → "${traducao}"`);
+      return traducao;
+    }
+
+    // Verificar se é categoria ou origem conhecida
     if (CATEGORIAS_ORIGENS[textoLower]) {
       const traducao = CATEGORIAS_ORIGENS[textoLower];
       console.log(`✅ Categoria/Origem mapeada: "${texto}" → "${traducao}"`);
       return traducao;
+    }
+
+    // Tentar tradução parcial - substituir palavras conhecidas
+    let textoTraduzido = textoLower;
+    for (const [ingles, portugues] of Object.entries(TITULOS_COMUNS)) {
+      if (textoTraduzido.includes(ingles) && ingles.length > 2) {
+        textoTraduzido = textoTraduzido.replace(new RegExp(ingles, 'gi'), portugues);
+        console.log(`🔄 Substituição parcial: "${ingles}" → "${portugues}" em "${texto}"`);
+      }
+    }
+
+    // Se houve substituição parcial, capitalizar adequadamente
+    if (textoTraduzido !== textoLower) {
+      textoTraduzido = textoTraduzido.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+      console.log(`✅ Tradução parcial: "${texto}" → "${textoTraduzido}"`);
+      return textoTraduzido;
     }
 
     // Para textos curtos (nome, categoria, origem), usar tradução automática
@@ -367,7 +568,7 @@ async function converterESalvarTheMealDB(meal: MealDBRecipe): Promise<ReceitaSug
     const ingredientes = extrairIngredientesTheMealDB(meal);
 
     // Traduzir dados para português (otimizado - sem logs individuais)
-    const nomePortugues = await traduzirParaPortugues(meal.strMeal);
+    const nomePortugues = await traduzirTituloReceita(meal.strMeal);
     const instrucoesPortugues = meal.strInstructions ? await traduzirParaPortugues(meal.strInstructions) : 'Instruções não disponíveis';
     const categoriaPortugues = meal.strCategory ? await traduzirParaPortugues(meal.strCategory) : 'Internacional';
     const origemPortugues = meal.strArea ? await traduzirParaPortugues(meal.strArea) : 'Internacional';
