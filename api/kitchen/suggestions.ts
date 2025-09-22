@@ -12,7 +12,7 @@ const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 // URLs das APIs
-const LIBRE_TRANSLATE_URL = 'https://libretranslate.com/translate';
+const LIBRE_TRANSLATE_URL = 'https://libretranslate.de/translate';
 const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
 
 // Interfaces para o sistema integrado
@@ -103,7 +103,11 @@ async function traduzirParaIngles(texto: string): Promise<string> {
     return texto;
 
   } catch (error) {
-    console.warn('⚠️ Erro na tradução PT→EN, usando original:', (error as Error).message);
+    console.warn('⚠️ Erro na tradução PT→EN, tentando buscar com termo original:', (error as Error).message);
+
+    // Se tradução falhar completamente, tentar buscar com termo em português
+    // pois alguns ingredientes como "chocolate", "arroz" são universais
+    console.log(`🔍 Tentando buscar no TheMealDB com termo original: "${texto}"`);
     return texto;
   }
 }
