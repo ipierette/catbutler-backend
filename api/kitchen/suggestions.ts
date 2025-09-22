@@ -317,7 +317,7 @@ async function converterESalvarTheMealDB(meal: MealDBRecipe): Promise<ReceitaSug
       imagem: meal.strMealThumb || '/images/receita-internacional.jpg',
       tempoEstimado,
       dificuldade,
-      fonte: 'mealdb' as const,
+      fonte: 'themealdb' as const,
       tipo: 'Receita Internacional',
       rating: 4.2,
       fonte_url: `https://www.themealdb.com/meal/${meal.idMeal}`
