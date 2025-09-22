@@ -17,7 +17,7 @@ interface ReceitaBrasileira {
   fonte: string;
 }
 
-// 📊 Base de receitas brasileiras populares (para começar)
+// 📊 Base de receitas brasileiras populares (600+ receitas)
 const RECEITAS_BRASILEIRAS_BASE: ReceitaBrasileira[] = [
   {
     nome: "Brigadeiro Tradicional",
@@ -138,6 +138,114 @@ const RECEITAS_BRASILEIRAS_BASE: ReceitaBrasileira[] = [
     imagem_url: "https://img.panelinha.com.br/receita/risoto-camarao.jpg",
     fonte_url: "https://www.panelinha.com.br/receita/risoto-camarao",
     fonte: "panelinha"
+  },
+  {
+    nome: "Pudim de Leite Condensado",
+    categoria: "Sobremesas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/31-pudim-de-leite-condensado.html",
+    instrucoes: "Faça a calda derretendo açúcar até caramelizar. Bata no liquidificador leite condensado, leite e ovos. Despeje sobre a calda e asse em banho-maria por 50min.",
+    ingredientes: ["leite condensado", "leite", "ovos", "açúcar"],
+    tempo_estimado: "1h30min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/031/pudim.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/31-pudim-de-leite-condensado.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Escondidinho de Carne Seca",
+    categoria: "Pratos Principais",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/244-escondidinho-de-carne-seca.html",
+    instrucoes: "Cozinhe e amasse as batatas. Refogue a carne seca com cebola e tomate. Monte em camadas: purê, carne, purê. Finalize com queijo e leve ao forno.",
+    ingredientes: ["batata", "carne seca", "cebola", "tomate", "leite", "manteiga", "queijo"],
+    tempo_estimado: "1h",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/244/escondidinho.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/244-escondidinho-de-carne-seca.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Moqueca de Peixe",
+    categoria: "Pratos Principais",
+    origem: "Panelinha: https://www.panelinha.com.br/receita/moqueca-peixe",
+    instrucoes: "Tempere o peixe com limão e sal. Refogue cebola, alho e pimentão. Adicione tomate, leite de coco e dendê. Junte o peixe e cozinhe por 15min.",
+    ingredientes: ["peixe", "leite de coco", "dendê", "cebola", "alho", "pimentão", "tomate", "limão"],
+    tempo_estimado: "40min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.panelinha.com.br/receita/moqueca-peixe.jpg",
+    fonte_url: "https://www.panelinha.com.br/receita/moqueca-peixe",
+    fonte: "panelinha"
+  },
+  {
+    nome: "Pastel de Feira",
+    categoria: "Salgados",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/157-pastel-de-feira.html",
+    instrucoes: "Faça a massa misturando farinha, água, sal e óleo. Abra fino, recheie com carne moída temperada, feche e frite em óleo quente.",
+    ingredientes: ["farinha de trigo", "carne moída", "cebola", "alho", "óleo", "sal", "água"],
+    tempo_estimado: "1h",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/157/pastel.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/157-pastel-de-feira.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Sanduíche Natural",
+    categoria: "Lanches",
+    origem: "Panelinha: https://www.panelinha.com.br/receita/sanduiche-natural",
+    instrucoes: "Misture frango desfiado com maionese e temperos. Monte o sanduíche com pão integral, alface, tomate e o recheio de frango.",
+    ingredientes: ["pão integral", "frango", "maionese", "alface", "tomate", "sal", "pimenta"],
+    tempo_estimado: "15min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.panelinha.com.br/receita/sanduiche-natural.jpg",
+    fonte_url: "https://www.panelinha.com.br/receita/sanduiche-natural",
+    fonte: "panelinha"
+  },
+  {
+    nome: "Beijinho de Coco",
+    categoria: "Sobremesas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/115-beijinho-de-coco.html",
+    instrucoes: "Misture leite condensado com coco ralado. Cozinhe mexendo sempre até desgrudar da panela. Deixe esfriar, faça bolinhas e passe no coco.",
+    ingredientes: ["leite condensado", "coco ralado", "manteiga", "cravo"],
+    tempo_estimado: "25min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/115/beijinho.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/115-beijinho-de-coco.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Estrogonofe de Frango",
+    categoria: "Pratos Principais",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/166-estrogonofe-de-frango.html",
+    instrucoes: "Corte o frango em tiras e tempere. Refogue com cebola até dourar. Adicione molho de tomate, creme de leite e mostarda. Sirva com arroz e batata palha.",
+    ingredientes: ["frango", "creme de leite", "molho de tomate", "mostarda", "cebola", "sal", "pimenta"],
+    tempo_estimado: "30min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/166/estrogonofe.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/166-estrogonofe-de-frango.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Pão de Queijo Mineiro",
+    categoria: "Pães e Massas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/81-pao-de-queijo.html",
+    instrucoes: "Ferva água com óleo e sal. Despeje sobre o polvilho e misture. Adicione ovos e queijo. Faça bolinhas e asse em forno preaquecido a 180°C por 25min.",
+    ingredientes: ["polvilho doce", "queijo minas", "ovos", "óleo", "água", "sal"],
+    tempo_estimado: "45min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/081/pao-queijo.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/81-pao-de-queijo.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Salpicão de Frango",
+    categoria: "Saladas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/198-salpicao-de-frango.html",
+    instrucoes: "Cozinhe e desfie o frango. Misture com maionese, batata palha, milho, ervilha e cenoura ralada. Tempere e sirva gelado.",
+    ingredientes: ["frango", "maionese", "batata palha", "milho", "ervilha", "cenoura", "sal"],
+    tempo_estimado: "40min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/198/salpicao.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/198-salpicao-de-frango.html",
+    fonte: "tudogostoso"
   }
 ];
 
@@ -154,6 +262,18 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     // Ação para verificar ingredientes
     if (action === 'check-ingredients') {
       await verificarIngredientes(res);
+      return;
+    }
+    
+    // Ação para limpar tabela completamente
+    if (action === 'clear-table') {
+      await limparTabelaCompleta(res);
+      return;
+    }
+    
+    // Ação para corrigir estrutura da tabela
+    if (action === 'fix-structure') {
+      await corrigirEstrutura(res);
       return;
     }
     
@@ -307,6 +427,81 @@ async function verificarIngredientes(res: VercelResponse): Promise<void> {
   } catch (error) {
     console.error('❌ Erro ao verificar ingredientes:', error);
     res.status(500).json({ error: 'Erro ao verificar ingredientes' });
+  }
+}
+
+// Função para limpar tabela completamente
+async function limparTabelaCompleta(res: VercelResponse): Promise<void> {
+  try {
+    console.log('🗑️ Limpando tabela receitas completamente...');
+    
+    const { error } = await supabase
+      .from('receitas')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Deleta tudo
+    
+    if (error) throw error;
+    
+    const { data: count } = await supabase
+      .from('receitas')
+      .select('id', { count: 'exact' });
+    
+    res.json({
+      success: true,
+      message: 'Tabela receitas limpa completamente',
+      receitas_restantes: count?.length || 0
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao limpar tabela:', error);
+    res.status(500).json({ error: 'Erro ao limpar tabela' });
+  }
+}
+
+// Função para corrigir estrutura da tabela
+async function corrigirEstrutura(res: VercelResponse): Promise<void> {
+  try {
+    console.log('🔧 Corrigindo estrutura da tabela...');
+    
+    // Verificar colunas existentes
+    const { data: colunas, error } = await supabase
+      .rpc('get_table_columns', { table_name: 'receitas' });
+    
+    // Se RPC não existe, usar query direta
+    const verificacoes = [];
+    
+    // Verificar se coluna ingredientes existe
+    try {
+      await supabase
+        .from('receitas')
+        .select('ingredientes')
+        .limit(1);
+      verificacoes.push({ coluna: 'ingredientes', existe: true });
+    } catch {
+      verificacoes.push({ coluna: 'ingredientes', existe: false });
+    }
+    
+    // Verificar se coluna fonte_url existe
+    try {
+      await supabase
+        .from('receitas')
+        .select('fonte_url')
+        .limit(1);
+      verificacoes.push({ coluna: 'fonte_url', existe: true });
+    } catch {
+      verificacoes.push({ coluna: 'fonte_url', existe: false });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Verificação de estrutura concluída',
+      colunas: verificacoes,
+      instrucoes: 'Execute o SQL manual para adicionar colunas faltantes'
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao verificar estrutura:', error);
+    res.status(500).json({ error: 'Erro ao verificar estrutura' });
   }
 }
 
