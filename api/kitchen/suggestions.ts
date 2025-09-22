@@ -11,8 +11,12 @@ const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GE
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-// URLs das APIs
-const LIBRE_TRANSLATE_URL = 'https://libretranslate.com/translate';
+// URLs das APIs (múltiplas para fallback)
+const LIBRE_TRANSLATE_URLS = [
+  'https://libretranslate.com/translate',
+  'https://libretranslate.de/translate',
+  'https://translate.argosopentech.com/translate'
+];
 const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
 
 // Mapeamento de títulos comuns do TheMealDB EN → PT (expandido)
@@ -263,7 +267,7 @@ async function traduzirParaIngles(texto: string): Promise<string> {
     // 2. Se não for mapeado, tentar tradução automática
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
-        const response = await axios.post(LIBRE_TRANSLATE_URL, {
+        const response = await axios.post(LIBRE_TRANSLATE_URLS[0], {
           q: texto,
           source: 'pt',
           target: 'en',
@@ -423,16 +427,20 @@ async function traduzirIngredientesOtimizado(ingredientes: string[]): Promise<st
   }
 }
 
-// Traduzir texto automático (função auxiliar - mais robusta)
+// Traduzir texto automático (função auxiliar - múltiplos servidores)
 async function traduzirTextoAutomatico(texto: string): Promise<string | null> {
   try {
-    // Tentar tradução com retry reduzido para economizar quota
-    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    console.log(`🌐 Tentando traduzir: "${texto}" em ${LIBRE_TRANSLATE_URLS.length} servidores...`);
+
+    // Tentar cada servidor disponível
+    for (const url of LIBRE_TRANSLATE_URLS) {
       try {
-        const response = await axios.post(LIBRE_TRANSLATE_URL, {
+        console.log(`📡 Tentando servidor: ${url}`);
+
+        const response = await axios.post(url, {
           q: texto,
-          source: 'en',
-          target: 'pt',
+          source: 'pt',
+          target: 'en',
           format: 'text'
         }, {
           timeout: 5000,
@@ -443,27 +451,23 @@ async function traduzirTextoAutomatico(texto: string): Promise<string | null> {
         });
 
         const textoTraduzido = response.data.translatedText || response.data.result;
-        return textoTraduzido && textoTraduzido !== texto ? textoTraduzido : null;
-
-      } catch (error: any) {
-        if (tentativa === 2) {
-          // Se erro 429 (quota), não tentar novamente
-          if (error.response?.status === 429) {
-            console.warn('⚠️ Quota da API de tradução esgotada, usando fallback');
-            return null;
-          }
-          throw error;
+        if (textoTraduzido && textoTraduzido !== texto) {
+          console.log(`✅ Traduzido em ${url}: "${texto}" → "${textoTraduzido}"`);
+          return textoTraduzido;
         }
 
-        // Aguardar menos tempo entre tentativas
-        await new Promise(resolve => setTimeout(resolve, 500 * tentativa));
+      } catch (serverError: any) {
+        console.warn(`⚠️ Servidor ${url} falhou: ${serverError.response?.status || serverError.message}`);
+        // Tentar próximo servidor
+        continue;
       }
     }
 
+    console.warn('⚠️ Todos os servidores de tradução falharam');
     return null;
 
   } catch (error) {
-    console.warn('⚠️ Tradução automática falhou, usando fallback');
+    console.warn('⚠️ Tradução automática falhou completamente');
     return null;
   }
 }
@@ -515,7 +519,7 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
     if (texto.length < 100) {
       for (let tentativa = 1; tentativa <= 2; tentativa++) {
         try {
-          const response = await axios.post(LIBRE_TRANSLATE_URL, {
+          const response = await axios.post(LIBRE_TRANSLATE_URLS[0], {
             q: texto,
             source: 'en',
             target: 'pt',
@@ -816,85 +820,85 @@ RESPONDA APENAS COM JSON VÁLIDO:
       }
     }
     
-    // Fallback para Groq (modelos atualizados)
+    // Fallback para Groq (modelos estáveis)
     if (!resposta && groq && process.env.GROQ_API_KEY) {
       try {
-        console.log('🤖 Tentando Groq Llama 3.1 70B...');
+        console.log('🤖 Tentando Groq Llama 3.2 3B...');
         const result = await groq.chat.completions.create({
           messages: [
             { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
             { role: 'user', content: prompt }
           ],
-          model: 'llama-3.1-70b-versatile', // Modelo mais recente do Groq
+          model: 'llama3.2-3b-preview', // Modelo pequeno e estável
           temperature: 0.8,
           max_tokens: 1500
         });
         resposta = result.choices[0]?.message?.content || '';
-        modeloUsado = 'Groq Llama 3.1';
-        console.log('✅ Groq Llama 3.1 funcionou!');
+        modeloUsado = 'Groq Llama 3.2';
+        console.log('✅ Groq Llama 3.2 funcionou!');
       } catch (groqError) {
-        console.error('❌ Groq Llama 3.1 falhou:', (groqError as Error).message);
-        // Tentar modelo alternativo mais simples
+        console.error('❌ Groq Llama 3.2 falhou:', (groqError as Error).message);
+        // Tentar modelo ainda mais simples
         try {
-          console.log('🤖 Tentando Groq Llama 3.1 8B (alternativo)...');
+          console.log('🤖 Tentando Groq Llama 3.2 1B (alternativo)...');
           const result = await groq.chat.completions.create({
             messages: [
               { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
               { role: 'user', content: prompt }
             ],
-            model: 'llama3-8b-8192', // Modelo mais simples como fallback
+            model: 'llama3.2-1b-preview', // Modelo ainda menor
             temperature: 0.8,
             max_tokens: 1500
           });
           resposta = result.choices[0]?.message?.content || '';
-          modeloUsado = 'Groq Llama 3.1 8B';
-          console.log('✅ Groq Llama 3.1 8B funcionou!');
-        } catch (llama8bError) {
-          console.error('❌ Groq Llama 3.1 8B também falhou:', (llama8bError as Error).message);
+          modeloUsado = 'Groq Llama 3.2 1B';
+          console.log('✅ Groq Llama 3.2 1B funcionou!');
+        } catch (llama1bError) {
+          console.error('❌ Groq Llama 3.2 1B também falhou:', (llama1bError as Error).message);
         }
       }
     }
     
-    // Fallback para HuggingFace (modelos alternativos)
+    // Fallback para HuggingFace (modelos gratuitos e acessíveis)
     if (!resposta && (process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO)) {
       try {
-        console.log('🤖 Tentando HuggingFace GPT-2...');
+        console.log('🤖 Tentando HuggingFace T5 Base...');
         const hfToken = process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO;
 
-        // Tentar GPT-2 primeiro
+        // Tentar T5 Base (modelo gratuito e estável)
         try {
           const response = await axios.post(
-            'https://api-inference.huggingface.co/models/gpt2',
+            'https://api-inference.huggingface.co/models/google-t5/t5-base',
             { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
             {
               headers: { 'Authorization': `Bearer ${hfToken}` },
-              timeout: 20000
+              timeout: 15000
             }
           );
 
           resposta = response.data[0]?.generated_text || '';
-          modeloUsado = 'HuggingFace GPT-2';
-          console.log('✅ HuggingFace GPT-2 funcionou!');
-        } catch (gpt2Error) {
-          console.error('❌ HuggingFace GPT-2 falhou:', (gpt2Error as Error).message);
+          modeloUsado = 'HuggingFace T5';
+          console.log('✅ HuggingFace T5 funcionou!');
+        } catch (t5Error) {
+          console.error('❌ HuggingFace T5 falhou:', (t5Error as Error).message);
 
-          // Tentar DialoGPT como fallback
+          // Tentar FLAN-T5 como fallback (também gratuito)
           try {
-            console.log('🤖 Tentando HuggingFace DialoGPT...');
+            console.log('🤖 Tentando HuggingFace FLAN-T5...');
             const response = await axios.post(
-              'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large',
-              { inputs: prompt },
+              'https://api-inference.huggingface.co/models/google/flan-t5-base',
+              { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
               {
                 headers: { 'Authorization': `Bearer ${hfToken}` },
-                timeout: 20000
+                timeout: 15000
               }
             );
 
-            resposta = response.data.generated_text || '';
-            modeloUsado = 'HuggingFace DialoGPT';
-            console.log('✅ HuggingFace DialoGPT funcionou!');
-          } catch (dialogptError) {
-            console.error('❌ HuggingFace DialoGPT também falhou:', (dialogptError as Error).message);
+            resposta = response.data[0]?.generated_text || '';
+            modeloUsado = 'HuggingFace FLAN-T5';
+            console.log('✅ HuggingFace FLAN-T5 funcionou!');
+          } catch (flanError) {
+            console.error('❌ HuggingFace FLAN-T5 também falhou:', (flanError as Error).message);
           }
         }
       } catch (hfError) {
@@ -903,12 +907,47 @@ RESPONDA APENAS COM JSON VÁLIDO:
     }
     
     if (!resposta) {
-      throw new Error('Todas as APIs de IA falharam ou não estão configuradas');
+      console.log('🔧 Todas as APIs de IA falharam. Gerando resposta simples...');
+      // Gerar resposta simples baseada nos ingredientes
+      resposta = `Olá! Sou o Chef Bruno, especialista em culinária brasileira.
+
+Com os ingredientes: ${ingredientes.join(', ')}, posso sugerir algumas opções deliciosas:
+
+🍽️ **Sugestões do Chef:**
+1. **Arroz com ${ingredientes[0]}**: Uma combinação clássica da culinária brasileira
+2. **${ingredientes[0].charAt(0).toUpperCase() + ingredientes[0].slice(1)} Refogado**: Simples e saboroso
+3. **Omelete com ${ingredientes.slice(0, 2).join(' e ')}**: Rápido e nutritivo
+
+💡 **Dica:** Use temperos brasileiros como alho, cebola, pimentão e cheiro-verde para dar mais sabor!
+
+Preciso das minhas APIs funcionando para dar sugestões mais criativas. Tente novamente em alguns minutos.`;
+      modeloUsado = 'Chef Bruno (Fallback)';
+      console.log('✅ Resposta de fallback gerada');
     }
 
-    // Limpar e parsear resposta
-    const jsonLimpo = resposta.replace(/```json|```/g, '').trim();
-    const receitasIA = JSON.parse(jsonLimpo);
+    // Verificar se é resposta de fallback (texto simples) ou JSON
+    let receitasIA;
+    if (modeloUsado === 'Chef Bruno (Fallback)') {
+      // Resposta de fallback - converter em formato de receita
+      receitasIA = [{
+        nome: `${ingredientes[0].charAt(0).toUpperCase() + ingredientes[0].slice(1)} Especial do Chef`,
+        categoria: 'Prato Principal',
+        origem: 'Chef Bruno',
+        ingredientes: ingredientes,
+        instrucoes: resposta,
+        imagem: '/images/receita-fallback.jpg',
+        tempoEstimado: '30min',
+        dificuldade: 'Fácil',
+        fonte: 'ia' as const,
+        tipo: 'Sugestão de Emergência',
+        rating: 4.0,
+        dicaEspecial: 'Sistema em modo de emergência - tente novamente em alguns minutos'
+      }];
+    } else {
+      // Resposta normal - limpar e parsear JSON
+      const jsonLimpo = resposta.replace(/```json|```/g, '').trim();
+      receitasIA = JSON.parse(jsonLimpo);
+    }
     
     return receitasIA.map((receita: any, index: number) => ({
       id: `ia-${Date.now()}-${index}`,
