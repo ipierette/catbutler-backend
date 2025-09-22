@@ -246,6 +246,142 @@ const RECEITAS_BRASILEIRAS_BASE: ReceitaBrasileira[] = [
     imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/198/salpicao.jpg",
     fonte_url: "https://www.tudogostoso.com.br/receita/198-salpicao-de-frango.html",
     fonte: "tudogostoso"
+  },
+  // === SOBREMESAS BRASILEIRAS ===
+  {
+    nome: "Pudim de Leite Condensado",
+    categoria: "Sobremesas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/31-pudim.html",
+    instrucoes: "Faça uma calda com açúcar. Bata no liquidificador leite condensado, leite e ovos. Despeje sobre a calda e asse em banho-maria por 1 hora.",
+    ingredientes: ["leite condensado", "leite", "ovos", "açúcar"],
+    tempo_estimado: "1h30min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/031/pudim.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/31-pudim.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Beijinho de Coco",
+    categoria: "Sobremesas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/115-beijinho.html",
+    instrucoes: "Misture leite condensado, coco ralado e manteiga. Cozinhe mexendo sempre até desgrudar da panela. Deixe esfriar, faça bolinhas e passe no coco.",
+    ingredientes: ["leite condensado", "coco ralado", "manteiga", "coco para decorar"],
+    tempo_estimado: "25min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/115/beijinho.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/115-beijinho.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Quindim",
+    categoria: "Sobremesas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/77-quindim.html",
+    instrucoes: "Bata gemas com açúcar. Adicione coco ralado e leite de coco. Despeje em forminhas caramelizadas. Asse em banho-maria.",
+    ingredientes: ["gemas", "açúcar", "coco ralado", "leite de coco"],
+    tempo_estimado: "1h",
+    dificuldade: "Difícil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/077/quindim.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/77-quindim.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Torta de Limão",
+    categoria: "Sobremesas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/144-torta-limao.html",
+    instrucoes: "Faça massa quebrada com farinha e manteiga. Prepare creme com leite condensado e suco de limão. Monte a torta e leve à geladeira.",
+    ingredientes: ["farinha de trigo", "manteiga", "leite condensado", "limão", "ovos", "açúcar"],
+    tempo_estimado: "2h",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/144/torta-limao.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/144-torta-limao.html",
+    fonte: "tudogostoso"
+  },
+  // === PRATOS PRINCIPAIS ===
+  {
+    nome: "Escondidinho de Carne Seca",
+    categoria: "Pratos Principais",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/188-escondidinho.html",
+    instrucoes: "Prepare purê de mandioca. Refogue carne seca com cebola e tomate. Monte em camadas: carne, purê, queijo. Asse até dourar.",
+    ingredientes: ["carne seca", "mandioca", "cebola", "tomate", "queijo", "leite", "manteiga"],
+    tempo_estimado: "1h",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/188/escondidinho.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/188-escondidinho.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Bobó de Camarão",
+    categoria: "Pratos Principais",
+    origem: "Panelinha: https://www.panelinha.com.br/receita/bobo-camarao",
+    instrucoes: "Cozinhe mandioca até amolecer. Refogue camarão com temperos. Bata mandioca com leite de coco. Misture com camarão e azeite de dendê.",
+    ingredientes: ["camarão", "mandioca", "leite de coco", "azeite de dendê", "cebola", "alho", "tomate"],
+    tempo_estimado: "50min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.panelinha.com.br/receita/bobo-camarao.jpg",
+    fonte_url: "https://www.panelinha.com.br/receita/bobo-camarao",
+    fonte: "panelinha"
+  },
+  {
+    nome: "Moqueca de Peixe Capixaba",
+    categoria: "Pratos Principais",
+    origem: "Panelinha: https://www.panelinha.com.br/receita/moqueca-capixaba",
+    instrucoes: "Tempere o peixe e deixe marinando. Refogue cebola, tomate e pimentão. Adicione o peixe, leite de coco e azeite de dendê. Cozinhe em panela de barro.",
+    ingredientes: ["peixe", "leite de coco", "azeite de dendê", "cebola", "tomate", "pimentão", "coentro"],
+    tempo_estimado: "45min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.panelinha.com.br/receita/moqueca-capixaba.jpg",
+    fonte_url: "https://www.panelinha.com.br/receita/moqueca-capixaba",
+    fonte: "panelinha"
+  },
+  // === PÃES E MASSAS ===
+  {
+    nome: "Pão de Queijo Mineiro",
+    categoria: "Pães e Massas",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/166-pao-de-queijo.html",
+    instrucoes: "Misture polvilho, sal, óleo e água fervente. Adicione ovos e queijo. Amasse bem e faça bolinhas. Asse em forno preaquecido a 200°C por 20 minutos.",
+    ingredientes: ["polvilho doce", "queijo minas", "ovos", "óleo", "leite", "sal"],
+    tempo_estimado: "40min",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/166/pao-queijo.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/166-pao-de-queijo.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Pastel de Feira",
+    categoria: "Salgados",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/199-pastel.html",
+    instrucoes: "Prepare a massa com farinha, ovo e água. Faça recheio de carne moída refogada. Monte os pastéis e frite em óleo quente até dourar.",
+    ingredientes: ["farinha de trigo", "ovo", "carne moída", "cebola", "alho", "óleo"],
+    tempo_estimado: "1h",
+    dificuldade: "Médio",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/199/pastel.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/199-pastel.html",
+    fonte: "tudogostoso"
+  },
+  // === CAFÉ DA MANHÃ ===
+  {
+    nome: "Tapioca Simples",
+    categoria: "Café da Manhã",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/177-tapioca.html",
+    instrucoes: "Hidrate a goma de tapioca com água. Aqueça frigideira antiaderente, espalhe a goma formando disco. Adicione recheio e dobre.",
+    ingredientes: ["goma de tapioca", "queijo", "presunto", "água"],
+    tempo_estimado: "15min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/177/tapioca.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/177-tapioca.html",
+    fonte: "tudogostoso"
+  },
+  {
+    nome: "Açaí na Tigela",
+    categoria: "Café da Manhã",
+    origem: "TudoGostoso: https://www.tudogostoso.com.br/receita/233-acai-tigela.html",
+    instrucoes: "Bata açaí congelado com banana e guaraná. Sirva em tigela com granola, frutas e mel.",
+    ingredientes: ["açaí", "banana", "guaraná", "granola", "frutas", "mel"],
+    tempo_estimado: "10min",
+    dificuldade: "Fácil",
+    imagem_url: "https://img.tudogostoso.com.br/imagens/receitas/000/000/233/acai.jpg",
+    fonte_url: "https://www.tudogostoso.com.br/receita/233-acai-tigela.html",
+    fonte: "tudogostoso"
   }
 ];
 
