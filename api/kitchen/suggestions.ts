@@ -376,26 +376,94 @@ Responda apenas com a tradução.`;
   }
 }
 
-// Traduzir texto automático (função auxiliar)
-async function traduzirTextoAutomatico(texto: string): Promise<string | null> {
+// Traduzir ingredientes de forma otimizada (reduz chamadas API)
+async function traduzirIngredientesOtimizado(ingredientes: string[]): Promise<string[]> {
   try {
-    const response = await axios.post(LIBRE_TRANSLATE_URL, {
-      q: texto,
-      source: 'en',
-      target: 'pt',
-      format: 'text'
-    }, {
-      timeout: 8000,
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'CatButler/1.0'
-      }
-    });
+    console.log(`🌿 Traduzindo ${ingredientes.length} ingredientes otimizadamente...`);
 
-    const textoTraduzido = response.data.translatedText || response.data.result;
-    return textoTraduzido && textoTraduzido !== texto ? textoTraduzido : null;
+    const ingredientesTraduzidos: string[] = [];
+
+    // Traduzir em lote para economizar chamadas
+    for (let i = 0; i < ingredientes.length; i += 5) {
+      const lote = ingredientes.slice(i, i + 5);
+      console.log(`📦 Traduzindo lote ${Math.floor(i/5) + 1}: ${lote.join(', ')}`);
+
+      // Tentar traduzir o lote inteiro de uma vez
+      try {
+        const textoLote = lote.join('; ');
+        const traducaoLote = await traduzirTextoAutomatico(textoLote);
+
+        if (traducaoLote) {
+          const ingredientesTraduzidosLote = traducaoLote.split(';').map(ing => ing.trim());
+          ingredientesTraduzidos.push(...ingredientesTraduzidosLote);
+          console.log(`✅ Traduzido lote: ${lote.length} ingredientes`);
+        } else {
+          // Fallback: traduzir individualmente
+          for (const ingrediente of lote) {
+            const traducao = await traduzirParaPortugues(ingrediente);
+            ingredientesTraduzidos.push(traducao);
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Erro no lote, traduzindo individualmente...`);
+        // Fallback: traduzir individualmente
+        for (const ingrediente of lote) {
+          const traducao = await traduzirParaPortugues(ingrediente);
+          ingredientesTraduzidos.push(traducao);
+        }
+      }
+    }
+
+    return ingredientesTraduzidos;
 
   } catch (error) {
+    console.error('❌ Erro na tradução otimizada de ingredientes:', (error as Error).message);
+    // Fallback: retornar ingredientes originais
+    return ingredientes;
+  }
+}
+
+// Traduzir texto automático (função auxiliar - mais robusta)
+async function traduzirTextoAutomatico(texto: string): Promise<string | null> {
+  try {
+    // Tentar tradução com retry reduzido para economizar quota
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      try {
+        const response = await axios.post(LIBRE_TRANSLATE_URL, {
+          q: texto,
+          source: 'en',
+          target: 'pt',
+          format: 'text'
+        }, {
+          timeout: 5000,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'CatButler/1.0'
+          }
+        });
+
+        const textoTraduzido = response.data.translatedText || response.data.result;
+        return textoTraduzido && textoTraduzido !== texto ? textoTraduzido : null;
+
+      } catch (error: any) {
+        if (tentativa === 2) {
+          // Se erro 429 (quota), não tentar novamente
+          if (error.response?.status === 429) {
+            console.warn('⚠️ Quota da API de tradução esgotada, usando fallback');
+            return null;
+          }
+          throw error;
+        }
+
+        // Aguardar menos tempo entre tentativas
+        await new Promise(resolve => setTimeout(resolve, 500 * tentativa));
+      }
+    }
+
+    return null;
+
+  } catch (error) {
+    console.warn('⚠️ Tradução automática falhou, usando fallback');
     return null;
   }
 }
@@ -445,7 +513,7 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
 
     // Para textos curtos (nome, categoria, origem), usar tradução automática
     if (texto.length < 100) {
-      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      for (let tentativa = 1; tentativa <= 2; tentativa++) {
         try {
           const response = await axios.post(LIBRE_TRANSLATE_URL, {
             q: texto,
@@ -453,7 +521,7 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
             target: 'pt',
             format: 'text'
           }, {
-            timeout: 8000,
+            timeout: 5000,
             headers: {
               'Content-Type': 'application/json',
               'User-Agent': 'CatButler/1.0'
@@ -466,10 +534,17 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
             return textoTraduzido;
           }
 
-        } catch (retryError) {
+        } catch (retryError: any) {
           console.warn(`⚠️ Tentativa ${tentativa} falhou para "${texto}"`);
-          if (tentativa === 3) throw retryError;
-          await new Promise(resolve => setTimeout(resolve, 1000 * tentativa));
+          if (tentativa === 2) {
+            // Se erro 429 (quota), não tentar novamente
+            if (retryError.response?.status === 429) {
+              console.warn('⚠️ Quota de tradução esgotada, usando fallback');
+              break;
+            }
+            throw retryError;
+          }
+          await new Promise(resolve => setTimeout(resolve, 500 * tentativa));
         }
       }
     }
@@ -573,9 +648,9 @@ async function converterESalvarTheMealDB(meal: MealDBRecipe): Promise<ReceitaSug
     const categoriaPortugues = meal.strCategory ? await traduzirParaPortugues(meal.strCategory) : 'Internacional';
     const origemPortugues = meal.strArea ? await traduzirParaPortugues(meal.strArea) : 'Internacional';
 
-    // Traduzir ingredientes em lote (otimizado)
+    // Traduzir ingredientes de forma inteligente (otimizada)
     const ingredientesPortugues = ingredientes.length > 0 ?
-      await Promise.all(ingredientes.map(ing => traduzirParaPortugues(ing))) :
+      await traduzirIngredientesOtimizado(ingredientes) :
       ingredientes;
 
     // Estimar tempo e dificuldade
@@ -741,41 +816,41 @@ RESPONDA APENAS COM JSON VÁLIDO:
       }
     }
     
-    // Fallback para Groq (modelo atualizado)
+    // Fallback para Groq (modelos atualizados)
     if (!resposta && groq && process.env.GROQ_API_KEY) {
       try {
-        console.log('🤖 Tentando Groq Llama3...');
+        console.log('🤖 Tentando Groq Llama 3.1 70B...');
         const result = await groq.chat.completions.create({
           messages: [
             { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
             { role: 'user', content: prompt }
           ],
-          model: 'llama3-8b-8192', // Modelo mais recente do Groq
+          model: 'llama-3.1-70b-versatile', // Modelo mais recente do Groq
           temperature: 0.8,
           max_tokens: 1500
         });
         resposta = result.choices[0]?.message?.content || '';
-        modeloUsado = 'Groq Llama3';
-        console.log('✅ Groq Llama3 funcionou!');
+        modeloUsado = 'Groq Llama 3.1';
+        console.log('✅ Groq Llama 3.1 funcionou!');
       } catch (groqError) {
-        console.error('❌ Groq Llama3 falhou:', (groqError as Error).message);
-        // Tentar modelo alternativo
+        console.error('❌ Groq Llama 3.1 falhou:', (groqError as Error).message);
+        // Tentar modelo alternativo mais simples
         try {
-          console.log('🤖 Tentando Groq Mixtral (alternativo)...');
+          console.log('🤖 Tentando Groq Llama 3.1 8B (alternativo)...');
           const result = await groq.chat.completions.create({
             messages: [
               { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
               { role: 'user', content: prompt }
             ],
-            model: 'mixtral-8x7b-32768', // Tentar o antigo como fallback
+            model: 'llama3-8b-8192', // Modelo mais simples como fallback
             temperature: 0.8,
             max_tokens: 1500
           });
           resposta = result.choices[0]?.message?.content || '';
-          modeloUsado = 'Groq Mixtral';
-          console.log('✅ Groq Mixtral funcionou!');
-        } catch (mixtralError) {
-          console.error('❌ Groq Mixtral também falhou:', (mixtralError as Error).message);
+          modeloUsado = 'Groq Llama 3.1 8B';
+          console.log('✅ Groq Llama 3.1 8B funcionou!');
+        } catch (llama8bError) {
+          console.error('❌ Groq Llama 3.1 8B também falhou:', (llama8bError as Error).message);
         }
       }
     }
