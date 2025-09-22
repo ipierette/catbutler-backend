@@ -647,8 +647,8 @@ async function converterESalvarTheMealDB(meal: MealDBRecipe): Promise<ReceitaSug
       ingredientes: ingredientesPortugues,
       instrucoes: instrucoesPortugues,
       imagem: meal.strMealThumb || '/images/receita-internacional.jpg',
-      tempoEstimado,
-      dificuldade,
+    tempoEstimado,
+    dificuldade,
       fonte: 'themealdb' as const,
       tipo: 'Receita Internacional',
       rating: 4.2,
@@ -960,54 +960,68 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     try {
       console.log('🌐 Buscando receitas no TheMealDB...');
       
-      // Traduzir ingredientes para inglês
-      const ingredientesEn = await Promise.all(
-        ingredientes.slice(0, 2).map(ing => traduzirParaIngles(ing))
-      );
-      
-      console.log(`🔤 Ingredientes traduzidos: ${ingredientes} → ${ingredientesEn}`);
-      
-      // Buscar no TheMealDB com ingredientes traduzidos
-      for (const ingredienteEn of ingredientesEn) {
-        const resultadoMealDB = await buscarReceitasTheMealDB(ingredienteEn);
+      // Tentar traduzir apenas UM ingrediente para economizar quota
+      const primeiroIngrediente = ingredientes[0];
+      let ingredienteEn = primeiroIngrediente;
+
+      try {
+        const traducao = await traduzirParaIngles(primeiroIngrediente);
+        if (traducao && traducao !== primeiroIngrediente) {
+          ingredienteEn = traducao;
+          console.log(`🔤 Tradução necessária: "${primeiroIngrediente}" → "${ingredienteEn}"`);
+        } else {
+          console.log(`🔤 Tradução não necessária: "${primeiroIngrediente}"`);
+        }
+      } catch (traducaoError) {
+        console.warn(`⚠️ Tradução falhou, usando original: "${primeiroIngrediente}"`);
+      }
+
+      // Buscar no TheMealDB com apenas 1 ingrediente
+      const resultadoMealDB = await buscarReceitasTheMealDB(ingredienteEn);
+
+      if (resultadoMealDB.meals && resultadoMealDB.meals.length > 0) {
+        // Processar apenas 2 receitas para não sobrecarregar
+        const receitasLimitadas = resultadoMealDB.meals.slice(0, 2);
         
-        if (resultadoMealDB.meals) {
-          // Processar apenas as 3 primeiras receitas para não sobrecarregar
-          const receitasLimitadas = resultadoMealDB.meals.slice(0, 3);
-          
-          for (const meal of receitasLimitadas) {
-            try {
-              const detalhes = await obterDetalhesTheMealDB(meal.idMeal);
-              if (detalhes) {
-                const receitaConvertida = await converterESalvarTheMealDB(detalhes);
-                receitaConvertida.matchScore = calcularMatchScore(
-                  receitaConvertida.ingredientes,
-                  ingredientes
-                );
-                receitasEncontradas.push(receitaConvertida);
-              }
-            } catch (convError) {
-              console.error('⚠️ Erro ao converter receita TheMealDB:', convError);
+        for (const meal of receitasLimitadas) {
+          try {
+            const detalhes = await obterDetalhesTheMealDB(meal.idMeal);
+          if (detalhes) {
+              const receitaConvertida = await converterESalvarTheMealDB(detalhes);
+            receitaConvertida.matchScore = calcularMatchScore(
+              receitaConvertida.ingredientes,
+              ingredientes
+            );
+            receitasEncontradas.push(receitaConvertida);
             }
+          } catch (convError) {
+            console.error('⚠️ Erro ao converter receita TheMealDB:', convError);
           }
         }
+      } else {
+        console.log('⚠️ Nenhuma receita encontrada no TheMealDB');
       }
-      
+
       const receitasTheMealDB = receitasEncontradas.filter(r => r.fonte === 'themealdb').length;
       console.log(`✅ ${receitasTheMealDB} receitas TheMealDB processadas e salvas`);
-      
+
     } catch (error) {
       console.error('⚠️ Erro ao buscar no TheMealDB:', error);
     }
 
-    // 3. GERAR SUGESTÕES CRIATIVAS COM IA
+    // 3. GERAR SUGESTÕES CRIATIVAS COM IA (APENAS SE NECESSÁRIO)
+    let sugestoesIA = [];
+    if (receitasEncontradas.length < 4) {
     try {
-      console.log('🤖 Gerando sugestões criativas com IA...');
-      const sugestoesIA = await gerarSugestoesCreativasIA(ingredientes);
+        console.log(`🤖 ${receitasEncontradas.length} receitas totais - gerando IA...`);
+        sugestoesIA = await gerarSugestoesCreativasIA(ingredientes);
       receitasEncontradas.push(...sugestoesIA);
-      console.log(`✅ ${sugestoesIA.length} sugestões criativas geradas`);
+        console.log(`✅ ${sugestoesIA.length} sugestões criativas geradas`);
     } catch (error) {
-      console.error('⚠️ Erro ao gerar sugestões IA:', error);
+        console.error('⚠️ Erro ao gerar sugestões IA:', error);
+      }
+    } else {
+      console.log(`✅ ${receitasEncontradas.length} receitas suficientes - pulando IA`);
     }
 
     // 4. ORDENAR RESULTADOS (prioridade: local > themealdb > ia)
