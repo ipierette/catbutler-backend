@@ -1,5 +1,6 @@
 // 🌐 Tradutor para CozinhaIA - TheMealDB para PT-BR
 // Traduz automaticamente receitas da API externa para português
+// Versão 2.0 - Com busca bidirecional e melhor mapeamento
 
 interface TraducaoMap {
   [key: string]: string;
@@ -353,6 +354,116 @@ export function traduzirNomeReceita(nome: string): string {
   });
   
   return nomeTrauzido;
+}
+
+// Mapa reverso para traduzir PT-BR para EN (para busca)
+const INGREDIENTES_REVERSO: TraducaoMap = {};
+const CATEGORIAS_REVERSO: TraducaoMap = {};
+
+// Construir mapas reversos
+Object.entries(INGREDIENTES).forEach(([en, pt]) => {
+  INGREDIENTES_REVERSO[pt.toLowerCase()] = en;
+});
+
+Object.entries(CATEGORIAS).forEach(([en, pt]) => {
+  CATEGORIAS_REVERSO[pt.toLowerCase()] = en;
+});
+
+// Mapeamentos específicos para busca em português
+const BUSCA_PT_PARA_EN: TraducaoMap = {
+  // Pratos brasileiros -> equivalentes internacionais
+  'risoto': 'rice',
+  'arroz': 'rice',
+  'feijão': 'beans',
+  'farofa': 'rice',
+  'brigadeiro': 'chocolate dessert',
+  'pão de açúcar': 'bread',
+  'coxinha': 'chicken',
+  'pastel': 'pastry',
+  'açaí': 'berry',
+  'tapioca': 'cassava',
+  'mandioca': 'cassava',
+  'carne seca': 'beef',
+  'linguiça': 'sausage',
+  'queijo': 'cheese',
+  'frango': 'chicken',
+  'carne': 'beef',
+  'porco': 'pork',
+  'peixe': 'fish',
+  'camarão': 'shrimp',
+  'ovos': 'eggs',
+  'leite': 'milk',
+  'manteiga': 'butter',
+  'azeite': 'oil',
+  'cebola': 'onion',
+  'alho': 'garlic',
+  'tomate': 'tomato',
+  'batata': 'potato',
+  'cenoura': 'carrot',
+  'pimentão': 'pepper',
+  'brócolis': 'broccoli',
+  'espinafre': 'spinach',
+  'couve': 'cabbage',
+  'macarrão': 'pasta',
+  'massa': 'pasta',
+  'pizza': 'pizza',
+  'hambúrguer': 'burger',
+  'salada': 'salad',
+  'sopa': 'soup',
+  'sobremesa': 'dessert',
+  'bolo': 'cake',
+  'torta': 'pie',
+  'biscoito': 'cookie',
+  'pão': 'bread',
+  'sanduíche': 'sandwich'
+};
+
+// Função para traduzir termo de busca PT-BR para EN
+export function traduzirBuscaParaIngles(termo: string): string[] {
+  const termoLower = termo.toLowerCase().trim();
+  const termosSugeridos: string[] = [];
+  
+  // 1. Busca direta no mapa específico
+  if (BUSCA_PT_PARA_EN[termoLower]) {
+    termosSugeridos.push(BUSCA_PT_PARA_EN[termoLower]);
+  }
+  
+  // 2. Busca no mapa de ingredientes reverso
+  if (INGREDIENTES_REVERSO[termoLower]) {
+    termosSugeridos.push(INGREDIENTES_REVERSO[termoLower]);
+  }
+  
+  // 3. Busca no mapa de categorias reverso
+  if (CATEGORIAS_REVERSO[termoLower]) {
+    termosSugeridos.push(CATEGORIAS_REVERSO[termoLower]);
+  }
+  
+  // 4. Busca parcial (se contém a palavra)
+  Object.entries(BUSCA_PT_PARA_EN).forEach(([pt, en]) => {
+    if (termoLower.includes(pt) && !termosSugeridos.includes(en)) {
+      termosSugeridos.push(en);
+    }
+  });
+  
+  // 5. Se não encontrou nada, retorna o termo original
+  if (termosSugeridos.length === 0) {
+    termosSugeridos.push(termo);
+  }
+  
+  return termosSugeridos;
+}
+
+// Função para traduzir lista de ingredientes PT-BR para EN
+export function traduzirIngredientesParaIngles(ingredientes: string[]): string[] {
+  const ingredientesEn: string[] = [];
+  
+  ingredientes.forEach(ingrediente => {
+    const termos = traduzirBuscaParaIngles(ingrediente);
+    ingredientesEn.push(...termos);
+  });
+  
+  // Remover duplicatas
+  return Array.from(new Set(ingredientesEn));
 }
 
 // Função principal para traduzir receita completa

@@ -3,7 +3,7 @@ import { withCors } from '../_lib/cors';
 import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
-import { traduzirReceita } from '../_lib/tradutor-cozinha';
+import { traduzirReceita, traduzirIngredientesParaIngles } from '../_lib/tradutor-cozinha';
 import { BancoDadosReceitas } from '../_lib/banco-receitas';
 
 // Configuração das APIs de IA
@@ -335,10 +335,16 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       console.error('⚠️ Erro ao buscar no banco local (continuando):', error);
     }
 
-    // 2. BUSCAR NA API TheMealDB
+    // 2. BUSCAR NA API TheMealDB COM TRADUÇÃO
     try {
       console.log('🌐 Buscando receitas no TheMealDB...');
-      const ingredientePrincipal = ingredientes[0];
+      
+      // Traduzir ingredientes para inglês para melhorar busca
+      const ingredientesEn = traduzirIngredientesParaIngles(ingredientes);
+      console.log('🔤 Ingredientes traduzidos:', ingredientes, '->', ingredientesEn);
+      
+      // Tentar buscar com o primeiro ingrediente traduzido
+      const ingredientePrincipal = ingredientesEn[0] || ingredientes[0];
       const resultadoMealDB = await buscarReceitasPorIngrediente(ingredientePrincipal);
       
       if (resultadoMealDB.meals) {
