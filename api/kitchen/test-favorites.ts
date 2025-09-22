@@ -27,12 +27,12 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
 
     // 1. Verificar se as tabelas existem
     try {
-      const { data: receitas, error: receitasError } = await supabase
+      const { error: receitasError } = await supabase
         .from('receitas')
         .select('count')
         .limit(1);
 
-      const { data: favoritos, error: favoritosError } = await supabase
+      const { error: favoritosError } = await supabase
         .from('receitas_favoritas')
         .select('count')
         .limit(1);
@@ -92,7 +92,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
 
     // 4. Verificar RLS
     try {
-      const { data: policies, error } = await supabase
+      const { error } = await supabase
         .rpc('get_policies_info');
 
       tests.push({
@@ -162,7 +162,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor',
-      message: error.message
+      message: getErrorMessage(error)
     });
   }
 };
