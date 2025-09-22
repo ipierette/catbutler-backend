@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/cors';
 import { createClient } from '@supabase/supabase-js';
-import axios from 'axios';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -142,7 +141,7 @@ const RECEITAS_BRASILEIRAS_BASE: ReceitaBrasileira[] = [
   }
 ];
 
-const handler = async (req: VercelRequest, res: VercelResponse) => {
+const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   try {
     console.log('🌐 Populando tabela com receitas brasileiras...');
     
@@ -179,7 +178,7 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
       }
     }
     
-    return res.json({
+    res.json({
       success: true,
       message: `Processo concluído: ${inseridas} receitas inseridas, ${erros} erros`,
       inseridas,
@@ -188,7 +187,8 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     });
     
   } catch (error) {
-    return res.status(500).json({ error: 'Erro ao popular receitas' });
+    console.error('❌ Erro ao popular receitas:', error);
+    res.status(500).json({ error: 'Erro ao popular receitas' });
   }
 };
 
