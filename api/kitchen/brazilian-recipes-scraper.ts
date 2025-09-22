@@ -575,34 +575,9 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       return;
     }
     
-    // Ações para bases curadas específicas
-    if (action === 'load-brasileiras') {
-      await carregarReceitasBrasileiras(res);
-      return;
-    }
-    
-    if (action === 'load-italianas') {
-      await carregarReceitasItalianas(res);
-      return;
-    }
-    
-    if (action === 'load-chinesas') {
-      await carregarReceitasChinesas(res);
-      return;
-    }
-    
-    if (action === 'load-indianas') {
-      await carregarReceitasIndianas(res);
-      return;
-    }
-    
-    if (action === 'load-francesas') {
-      await carregarReceitasFrancesas(res);
-      return;
-    }
-    
-    if (action === 'load-all-cuisines') {
-      await carregarTodasCulinarias(res);
+    // Ação simples para carregar receitas por culinária
+    if (action === 'load-simple') {
+      await carregarReceitasSimples(res);
       return;
     }
     
@@ -1636,6 +1611,171 @@ async function carregarBaseCurada(res: VercelResponse): Promise<void> {
   }
 }
 
+// Função simples para carregar receitas variadas
+async function carregarReceitasSimples(res: VercelResponse): Promise<void> {
+  try {
+    console.log('🍽️ Carregando receitas simples de várias culinárias...');
+    
+    const RECEITAS_SIMPLES = [
+      // BRASILEIRAS
+      {
+        nome: "Brigadeiro Simples",
+        categoria: "Sobremesas",
+        origem: "Brasil",
+        instrucoes: "Misture leite condensado, manteiga e chocolate. Cozinhe até desgrudar. Faça bolinhas.",
+        ingredientes: ["leite condensado", "manteiga", "chocolate em pó", "granulado"],
+        tempo_estimado: "30min",
+        dificuldade: "Fácil",
+        imagem_url: "https://img.tudogostoso.com.br/brigadeiro.jpg",
+        fonte_url: "https://www.tudogostoso.com.br/receita/114-brigadeiro.html",
+        fonte: "tudogostoso"
+      },
+      {
+        nome: "Coxinha de Frango Simples",
+        categoria: "Salgados",
+        origem: "Brasil",
+        instrucoes: "Faça recheio de frango. Prepare massa com farinha e água. Modele, empane e frite.",
+        ingredientes: ["frango", "farinha de trigo", "cebola", "alho", "farinha de rosca", "ovos"],
+        tempo_estimado: "1h",
+        dificuldade: "Médio",
+        imagem_url: "https://img.tudogostoso.com.br/coxinha.jpg",
+        fonte_url: "https://www.tudogostoso.com.br/receita/2999-coxinha.html",
+        fonte: "tudogostoso"
+      },
+      // ITALIANAS
+      {
+        nome: "Espaguete Carbonara Simples",
+        categoria: "Massas",
+        origem: "Itália",
+        instrucoes: "Cozinhe espaguete. Frite bacon. Misture gemas com queijo. Combine tudo fora do fogo.",
+        ingredientes: ["espaguete", "bacon", "gemas", "queijo parmesão", "pimenta"],
+        tempo_estimado: "25min",
+        dificuldade: "Médio",
+        imagem_url: "https://img.panelinha.com.br/carbonara.jpg",
+        fonte_url: "https://www.panelinha.com.br/receita/carbonara",
+        fonte: "panelinha"
+      },
+      {
+        nome: "Pizza Margherita Simples",
+        categoria: "Massas",
+        origem: "Itália",
+        instrucoes: "Abra massa de pizza. Cubra com molho, mussarela e manjericão. Asse em forno quente.",
+        ingredientes: ["massa de pizza", "molho de tomate", "mussarela", "manjericão", "azeite"],
+        tempo_estimado: "30min",
+        dificuldade: "Fácil",
+        imagem_url: "https://img.tudogostoso.com.br/pizza.jpg",
+        fonte_url: "https://www.tudogostoso.com.br/receita/pizza-margherita.html",
+        fonte: "tudogostoso"
+      },
+      // CHINESAS
+      {
+        nome: "Yakisoba Simples",
+        categoria: "Massas",
+        origem: "China/Japão",
+        instrucoes: "Cozinhe macarrão. Refogue legumes e carne. Misture com shoyu e açúcar.",
+        ingredientes: ["macarrão yakisoba", "repolho", "cenoura", "carne", "shoyu", "açúcar"],
+        tempo_estimado: "25min",
+        dificuldade: "Fácil",
+        imagem_url: "https://img.tudogostoso.com.br/yakisoba.jpg",
+        fonte_url: "https://www.tudogostoso.com.br/receita/yakisoba.html",
+        fonte: "tudogostoso"
+      },
+      // INDIANAS
+      {
+        nome: "Frango Curry Simples",
+        categoria: "Pratos Principais",
+        origem: "Índia",
+        instrucoes: "Refogue frango com cebola. Tempere com curry e especiarias. Adicione leite de coco.",
+        ingredientes: ["frango", "cebola", "curry em pó", "leite de coco", "alho", "gengibre"],
+        tempo_estimado: "35min",
+        dificuldade: "Médio",
+        imagem_url: "https://img.tudogostoso.com.br/frango-curry.jpg",
+        fonte_url: "https://www.tudogostoso.com.br/receita/frango-curry.html",
+        fonte: "tudogostoso"
+      },
+      // FRANCESAS
+      {
+        nome: "Quiche Simples",
+        categoria: "Tortas Salgadas",
+        origem: "França",
+        instrucoes: "Forre forma com massa. Misture ovos, creme de leite e queijo. Adicione bacon e asse.",
+        ingredientes: ["massa quebrada", "ovos", "creme de leite", "queijo", "bacon"],
+        tempo_estimado: "1h",
+        dificuldade: "Médio",
+        imagem_url: "https://img.panelinha.com.br/quiche.jpg",
+        fonte_url: "https://www.panelinha.com.br/receita/quiche",
+        fonte: "panelinha"
+      }
+    ];
+    
+    let inseridas = 0;
+    let existentes = 0;
+    let erros = 0;
+    
+    for (const receita of RECEITAS_SIMPLES) {
+      try {
+        // Verificar duplicata
+        const { data: existente } = await supabase
+          .from('receitas')
+          .select('id')
+          .eq('nome', receita.nome)
+          .single();
+
+        if (existente) {
+          existentes++;
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('receitas')
+          .insert({
+            nome: receita.nome,
+            categoria: receita.categoria,
+            origem: receita.origem,
+            instrucoes: receita.instrucoes,
+            ingredientes: receita.ingredientes,
+            tempo_estimado: receita.tempo_estimado,
+            dificuldade: receita.dificuldade,
+            imagem_url: receita.imagem_url,
+            fonte_url: receita.fonte_url,
+            fonte: receita.fonte,
+            ativo: true,
+            verificado: true
+          });
+
+        if (!error) {
+          inseridas++;
+          console.log(`✅ Receita inserida: ${receita.nome}`);
+        }
+
+      } catch (err) {
+        erros++;
+        console.error(`❌ Erro ao inserir:`, err);
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `Receitas simples carregadas: ${inseridas} inseridas, ${existentes} já existiam`,
+      inseridas,
+      existentes,
+      erros,
+      total: RECEITAS_SIMPLES.length,
+      receitas_por_culinaria: {
+        brasileiras: 2,
+        italianas: 2,
+        chinesas: 1,
+        indianas: 1,
+        francesas: 1
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao carregar receitas simples:', error);
+    res.status(500).json({ error: 'Erro ao carregar receitas simples' });
+  }
+}
+
 // === BASES CURADAS POR CULINÁRIA ===
 
 // Função para carregar receitas brasileiras expandidas (100+ receitas)
@@ -1756,7 +1896,8 @@ async function carregarReceitasBrasileiras(res: VercelResponse): Promise<void> {
       }
     ];
     
-    await inserirReceitas(RECEITAS_BRASILEIRAS_EXPANDIDAS, res, 'receitas brasileiras');
+    const resultado = await inserirReceitasRetorno(RECEITAS_BRASILEIRAS_EXPANDIDAS, 'receitas brasileiras');
+    res.json(resultado);
     
   } catch (error) {
     console.error('❌ Erro ao carregar receitas brasileiras:', error);
@@ -1833,7 +1974,8 @@ async function carregarReceitasItalianas(res: VercelResponse): Promise<void> {
       }
     ];
     
-    await inserirReceitas(RECEITAS_ITALIANAS, res, 'receitas italianas');
+    const resultado = await inserirReceitasRetorno(RECEITAS_ITALIANAS, 'receitas italianas');
+    res.json(resultado);
     
   } catch (error) {
     console.error('❌ Erro ao carregar receitas italianas:', error);
@@ -1885,7 +2027,8 @@ async function carregarReceitasChinesas(res: VercelResponse): Promise<void> {
       }
     ];
     
-    await inserirReceitas(RECEITAS_CHINESAS, res, 'receitas chinesas');
+    const resultado = await inserirReceitasRetorno(RECEITAS_CHINESAS, 'receitas chinesas');
+    res.json(resultado);
     
   } catch (error) {
     console.error('❌ Erro ao carregar receitas chinesas:', error);
@@ -1937,7 +2080,8 @@ async function carregarReceitasIndianas(res: VercelResponse): Promise<void> {
       }
     ];
     
-    await inserirReceitas(RECEITAS_INDIANAS, res, 'receitas indianas');
+    const resultado = await inserirReceitasRetorno(RECEITAS_INDIANAS, 'receitas indianas');
+    res.json(resultado);
     
   } catch (error) {
     console.error('❌ Erro ao carregar receitas indianas:', error);
@@ -1989,7 +2133,8 @@ async function carregarReceitasFrancesas(res: VercelResponse): Promise<void> {
       }
     ];
     
-    await inserirReceitas(RECEITAS_FRANCESAS, res, 'receitas francesas');
+    const resultado = await inserirReceitasRetorno(RECEITAS_FRANCESAS, 'receitas francesas');
+    res.json(resultado);
     
   } catch (error) {
     console.error('❌ Erro ao carregar receitas francesas:', error);
@@ -1997,8 +2142,8 @@ async function carregarReceitasFrancesas(res: VercelResponse): Promise<void> {
   }
 }
 
-// Função auxiliar para inserir receitas
-async function inserirReceitas(receitas: ReceitaBrasileira[], res: VercelResponse, tipo: string): Promise<void> {
+// Função auxiliar para inserir receitas (retorna resultado)
+async function inserirReceitasRetorno(receitas: ReceitaBrasileira[], tipo: string): Promise<any> {
   let inseridas = 0;
   let existentes = 0;
   let erros = 0;
@@ -2036,7 +2181,7 @@ async function inserirReceitas(receitas: ReceitaBrasileira[], res: VercelRespons
 
       if (!error) {
         inseridas++;
-        if (inseridas % 10 === 0) {
+        if (inseridas % 5 === 0) {
           console.log(`✅ ${inseridas} ${tipo} inseridas...`);
         }
       }
@@ -2047,7 +2192,7 @@ async function inserirReceitas(receitas: ReceitaBrasileira[], res: VercelRespons
     }
   }
 
-  res.json({
+  return {
     success: true,
     message: `${tipo} carregadas: ${inseridas} inseridas, ${existentes} já existiam`,
     inseridas,
@@ -2055,7 +2200,7 @@ async function inserirReceitas(receitas: ReceitaBrasileira[], res: VercelRespons
     erros,
     total: receitas.length,
     tipo
-  });
+  };
 }
 
 // Função para carregar todas as culinárias de uma vez
