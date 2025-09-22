@@ -7,6 +7,13 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Função helper para tratar erros
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Erro desconhecido';
+}
+
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Método não permitido' });
@@ -40,7 +47,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     } catch (error) {
       tests.push({
         test: 'Tabelas existem',
-        error: error.message
+        error: getErrorMessage(error)
       });
     }
 
@@ -60,7 +67,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     } catch (error) {
       tests.push({
         test: 'Contar receitas ativas',
-        error: error.message
+        error: getErrorMessage(error)
       });
     }
 
@@ -79,7 +86,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     } catch (error) {
       tests.push({
         test: 'Contar favoritos',
-        error: error.message
+        error: getErrorMessage(error)
       });
     }
 
@@ -97,7 +104,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       tests.push({
         test: 'RLS Policies',
         note: 'RPC não disponível (normal)',
-        error: error.message
+        error: getErrorMessage(error)
       });
     }
 
@@ -118,7 +125,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       } catch (error) {
         tests.push({
           test: 'Autenticação',
-          error: error.message
+          error: getErrorMessage(error)
         });
       }
     } else {
