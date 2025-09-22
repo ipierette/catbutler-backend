@@ -72,20 +72,36 @@ interface SugestaoResponse {
 // Traduzir texto português para inglês (para busca no TheMealDB)
 async function traduzirParaIngles(texto: string): Promise<string> {
   try {
-    const response = await axios.post(LIBRE_TRANSLATE_URL, {
-      q: texto,
-      source: 'pt',
-      target: 'en',
-      format: 'text'
-    }, {
-      timeout: 5000,
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
-    const textoTraduzido = response.data.translatedText || texto;
-    console.log(`🔤 Tradução PT→EN: "${texto}" → "${textoTraduzido}"`);
-    return textoTraduzido;
-    
+    console.log(`🔤 Traduzindo PT→EN: "${texto}"`);
+
+    // Tentar tradução com retry
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      try {
+        const response = await axios.post(LIBRE_TRANSLATE_URL, {
+          q: texto,
+          source: 'pt',
+          target: 'en',
+          format: 'text'
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const textoTraduzido = response.data.translatedText || response.data.result || texto;
+        console.log(`🔤 Tradução PT→EN: "${texto}" → "${textoTraduzido}"`);
+        return textoTraduzido;
+
+      } catch (retryError) {
+        console.warn(`⚠️ Tentativa ${tentativa} falhou:`, (retryError as Error).message);
+        if (tentativa === 3) throw retryError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * tentativa)); // Backoff
+      }
+    }
+
+    return texto;
+
   } catch (error) {
     console.warn('⚠️ Erro na tradução PT→EN, usando original:', (error as Error).message);
     return texto;
@@ -95,20 +111,36 @@ async function traduzirParaIngles(texto: string): Promise<string> {
 // Traduzir texto inglês para português (para respostas do TheMealDB)
 async function traduzirParaPortugues(texto: string): Promise<string> {
   try {
-    const response = await axios.post(LIBRE_TRANSLATE_URL, {
-      q: texto,
-      source: 'en',
-      target: 'pt',
-      format: 'text'
-    }, {
-      timeout: 5000,
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
-    const textoTraduzido = response.data.translatedText || texto;
-    console.log(`🔤 Tradução EN→PT: "${texto}" → "${textoTraduzido}"`);
-    return textoTraduzido;
-    
+    console.log(`🔤 Traduzindo EN→PT: "${texto}"`);
+
+    // Tentar tradução com retry
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      try {
+        const response = await axios.post(LIBRE_TRANSLATE_URL, {
+          q: texto,
+          source: 'en',
+          target: 'pt',
+          format: 'text'
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const textoTraduzido = response.data.translatedText || response.data.result || texto;
+        console.log(`🔤 Tradução EN→PT: "${texto}" → "${textoTraduzido}"`);
+        return textoTraduzido;
+
+      } catch (retryError) {
+        console.warn(`⚠️ Tentativa ${tentativa} falhou:`, (retryError as Error).message);
+        if (tentativa === 3) throw retryError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * tentativa)); // Backoff
+      }
+    }
+
+    return texto;
+
   } catch (error) {
     console.warn('⚠️ Erro na tradução EN→PT, usando original:', (error as Error).message);
     return texto;
@@ -318,58 +350,112 @@ RESPONDA APENAS COM JSON VÁLIDO:
     let resposta = '';
     let modeloUsado = '';
     
-    // Tentar Gemini primeiro
+    // Tentar Gemini primeiro (modelo atualizado)
     if (genAI && process.env.GEMINI_API_KEY) {
       try {
-        console.log('🤖 Tentando Gemini...');
-        const result = await genAI.getGenerativeModel({ model: 'gemini-pro' }).generateContent(prompt);
+        console.log('🤖 Tentando Gemini 1.5 Flash...');
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await model.generateContent(prompt);
         resposta = result.response.text();
-        modeloUsado = 'Gemini';
-        console.log('✅ Gemini funcionou!');
+        modeloUsado = 'Gemini 1.5 Flash';
+        console.log('✅ Gemini 1.5 Flash funcionou!');
       } catch (geminiError) {
-        console.error('❌ Gemini falhou:', (geminiError as Error).message);
+        console.error('❌ Gemini 1.5 Flash falhou:', (geminiError as Error).message);
+        // Tentar fallback para gemini-pro se disponível
+        try {
+          console.log('🤖 Tentando Gemini Pro (fallback)...');
+          const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+          const result = await model.generateContent(prompt);
+          resposta = result.response.text();
+          modeloUsado = 'Gemini Pro';
+          console.log('✅ Gemini Pro funcionou!');
+        } catch (proError) {
+          console.error('❌ Gemini Pro também falhou:', (proError as Error).message);
+        }
       }
     }
     
-    // Fallback para Groq
+    // Fallback para Groq (modelo atualizado)
     if (!resposta && groq && process.env.GROQ_API_KEY) {
       try {
-        console.log('🤖 Tentando Groq...');
+        console.log('🤖 Tentando Groq Llama3...');
         const result = await groq.chat.completions.create({
           messages: [
             { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
             { role: 'user', content: prompt }
           ],
-          model: 'mixtral-8x7b-32768',
+          model: 'llama3-8b-8192', // Modelo mais recente do Groq
           temperature: 0.8,
           max_tokens: 1500
         });
         resposta = result.choices[0]?.message?.content || '';
-        modeloUsado = 'Groq';
-        console.log('✅ Groq funcionou!');
+        modeloUsado = 'Groq Llama3';
+        console.log('✅ Groq Llama3 funcionou!');
       } catch (groqError) {
-        console.error('❌ Groq falhou:', (groqError as Error).message);
+        console.error('❌ Groq Llama3 falhou:', (groqError as Error).message);
+        // Tentar modelo alternativo
+        try {
+          console.log('🤖 Tentando Groq Mixtral (alternativo)...');
+          const result = await groq.chat.completions.create({
+            messages: [
+              { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
+              { role: 'user', content: prompt }
+            ],
+            model: 'mixtral-8x7b-32768', // Tentar o antigo como fallback
+            temperature: 0.8,
+            max_tokens: 1500
+          });
+          resposta = result.choices[0]?.message?.content || '';
+          modeloUsado = 'Groq Mixtral';
+          console.log('✅ Groq Mixtral funcionou!');
+        } catch (mixtralError) {
+          console.error('❌ Groq Mixtral também falhou:', (mixtralError as Error).message);
+        }
       }
     }
     
-    // Fallback para HuggingFace
+    // Fallback para HuggingFace (modelos alternativos)
     if (!resposta && (process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO)) {
       try {
-        console.log('🤖 Tentando HuggingFace...');
+        console.log('🤖 Tentando HuggingFace GPT-2...');
         const hfToken = process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO;
-        
-        const response = await axios.post(
-          'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large',
-          { inputs: prompt },
-          {
-            headers: { 'Authorization': `Bearer ${hfToken}` },
-            timeout: 15000
+
+        // Tentar GPT-2 primeiro
+        try {
+          const response = await axios.post(
+            'https://api-inference.huggingface.co/models/gpt2',
+            { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
+            {
+              headers: { 'Authorization': `Bearer ${hfToken}` },
+              timeout: 20000
+            }
+          );
+
+          resposta = response.data[0]?.generated_text || '';
+          modeloUsado = 'HuggingFace GPT-2';
+          console.log('✅ HuggingFace GPT-2 funcionou!');
+        } catch (gpt2Error) {
+          console.error('❌ HuggingFace GPT-2 falhou:', (gpt2Error as Error).message);
+
+          // Tentar DialoGPT como fallback
+          try {
+            console.log('🤖 Tentando HuggingFace DialoGPT...');
+            const response = await axios.post(
+              'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large',
+              { inputs: prompt },
+              {
+                headers: { 'Authorization': `Bearer ${hfToken}` },
+                timeout: 20000
+              }
+            );
+
+            resposta = response.data.generated_text || '';
+            modeloUsado = 'HuggingFace DialoGPT';
+            console.log('✅ HuggingFace DialoGPT funcionou!');
+          } catch (dialogptError) {
+            console.error('❌ HuggingFace DialoGPT também falhou:', (dialogptError as Error).message);
           }
-        );
-        
-        resposta = response.data[0]?.generated_text || '';
-        modeloUsado = 'HuggingFace';
-        console.log('✅ HuggingFace funcionou!');
+        }
       } catch (hfError) {
         console.error('❌ HuggingFace falhou:', (hfError as Error).message);
       }
