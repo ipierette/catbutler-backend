@@ -178,14 +178,12 @@ async function traduzirParaIngles(texto: string): Promise<string> {
   }
 }
 
-// Traduzir texto inglês para português (para respostas do TheMealDB)
+// Traduzir texto inglês para português (para respostas do TheMealDB) - OTIMIZADO
 async function traduzirParaPortugues(texto: string): Promise<string> {
   try {
-    console.log(`🔤 Traduzindo EN→PT: "${texto}"`);
-
-    // Se for texto curto, tentar tradução automática com retry
+    // Se for texto curto, tentar tradução automática com retry (sem logs individuais)
     if (texto.length < 100) {
-      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      for (let tentativa = 1; tentativa <= 2; tentativa++) {
         try {
           const response = await axios.post(LIBRE_TRANSLATE_URL, {
             q: texto,
@@ -193,20 +191,16 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
             target: 'pt',
             format: 'text'
           }, {
-            timeout: 10000,
-            headers: {
-              'Content-Type': 'application/json'
-            }
+            timeout: 5000,
+            headers: { 'Content-Type': 'application/json' }
           });
 
           const textoTraduzido = response.data.translatedText || response.data.result || texto;
-          console.log(`🔤 Tradução EN→PT: "${texto}" → "${textoTraduzido}"`);
           return textoTraduzido;
 
         } catch (retryError) {
-          console.warn(`⚠️ Tentativa ${tentativa} falhou:`, (retryError as Error).message);
-          if (tentativa === 3) throw retryError;
-          await new Promise(resolve => setTimeout(resolve, 1000 * tentativa)); // Backoff
+          if (tentativa === 2) throw retryError;
+          await new Promise(resolve => setTimeout(resolve, 500 * tentativa));
         }
       }
     }
@@ -214,31 +208,26 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
     // Para textos longos (como instruções), usar IA para tradução mais precisa
     if (texto.length >= 100 && genAI && process.env.GEMINI_API_KEY) {
       try {
-        console.log('🤖 Traduzindo texto longo com Gemini...');
-        const prompt = `Traduza o seguinte texto de inglês para português brasileiro de forma natural e fluida. Mantenha a estrutura e o tom original:
+        const prompt = `Traduza este texto de inglês para português brasileiro de forma natural:
 
 "${texto}"
 
-Responda apenas com a tradução, sem comentários adicionais.`;
+Responda apenas com a tradução.`;
 
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         const result = await model.generateContent(prompt);
         const traducao = result.response.text().trim();
-
-        console.log(`✅ Tradução com IA: "${texto.substring(0, 50)}..." → "${traducao.substring(0, 50)}..."`);
         return traducao;
 
       } catch (aiError) {
-        console.warn('⚠️ Tradução com IA falhou:', (aiError as Error).message);
+        // Fallback silencioso
       }
     }
 
-    // Fallback: retornar texto original se tudo falhar
-    console.warn('⚠️ Usando texto original (todas as traduções falharam)');
+    // Fallback: retornar texto original
     return texto;
 
   } catch (error) {
-    console.warn('⚠️ Erro na tradução EN→PT, usando original:', (error as Error).message);
     return texto;
   }
 }
@@ -303,59 +292,16 @@ async function converterESalvarTheMealDB(meal: MealDBRecipe): Promise<ReceitaSug
 
     const ingredientes = extrairIngredientesTheMealDB(meal);
 
-    // Traduzir dados para português com fallbacks robustos
-    let nomePortugues = meal.strMeal;
-    try {
-      nomePortugues = await traduzirParaPortugues(meal.strMeal);
-    } catch (error) {
-      console.warn(`⚠️ Não foi possível traduzir nome "${meal.strMeal}", usando original`);
-    }
+    // Traduzir dados para português (otimizado - sem logs individuais)
+    const nomePortugues = await traduzirParaPortugues(meal.strMeal);
+    const instrucoesPortugues = meal.strInstructions ? await traduzirParaPortugues(meal.strInstructions) : 'Instruções não disponíveis';
+    const categoriaPortugues = meal.strCategory ? await traduzirParaPortugues(meal.strCategory) : 'Internacional';
+    const origemPortugues = meal.strArea ? await traduzirParaPortugues(meal.strArea) : 'Internacional';
 
-    let instrucoesPortugues = 'Instruções não disponíveis';
-    if (meal.strInstructions) {
-      try {
-        instrucoesPortugues = await traduzirParaPortugues(meal.strInstructions);
-      } catch (error) {
-        console.warn(`⚠️ Não foi possível traduzir instruções, tentando simplificar...`);
-        try {
-          const instrucoesResumidas = meal.strInstructions.substring(0, 200) + '...';
-          instrucoesPortugues = await traduzirParaPortugues(instrucoesResumidas);
-        } catch (error2) {
-          console.warn(`⚠️ Tradução simplificada também falhou, usando original`);
-          instrucoesPortugues = meal.strInstructions;
-        }
-      }
-    }
-
-    let categoriaPortugues = 'Internacional';
-    if (meal.strCategory) {
-      try {
-        categoriaPortugues = await traduzirParaPortugues(meal.strCategory);
-      } catch (error) {
-        console.warn(`⚠️ Não foi possível traduzir categoria "${meal.strCategory}", usando padrão`);
-      }
-    }
-
-    let origemPortugues = 'Internacional';
-    if (meal.strArea) {
-      try {
-        origemPortugues = await traduzirParaPortugues(meal.strArea);
-      } catch (error) {
-        console.warn(`⚠️ Não foi possível traduzir origem "${meal.strArea}", usando padrão`);
-      }
-    }
-
-    // Traduzir ingredientes com fallbacks individuais
-    let ingredientesPortugues: string[] = [];
-    for (const ing of ingredientes) {
-      try {
-        const ingTraduzido = await traduzirParaPortugues(ing);
-        ingredientesPortugues.push(ingTraduzido);
-      } catch (error) {
-        console.warn(`⚠️ Não foi possível traduzir ingrediente "${ing}", usando original`);
-        ingredientesPortugues.push(ing);
-      }
-    }
+    // Traduzir ingredientes em lote (otimizado)
+    const ingredientesPortugues = ingredientes.length > 0 ?
+      await Promise.all(ingredientes.map(ing => traduzirParaPortugues(ing))) :
+      ingredientes;
 
     // Estimar tempo e dificuldade
     const tempoEstimado = ingredientes.length > 10 ? '1h' : ingredientes.length > 5 ? '45min' : '30min';
@@ -371,19 +317,17 @@ async function converterESalvarTheMealDB(meal: MealDBRecipe): Promise<ReceitaSug
       imagem: meal.strMealThumb || '/images/receita-internacional.jpg',
       tempoEstimado,
       dificuldade,
-      fonte: 'themealdb' as const,
+      fonte: 'mealdb' as const,
       tipo: 'Receita Internacional',
       rating: 4.2,
       fonte_url: `https://www.themealdb.com/meal/${meal.idMeal}`
     };
 
-    // Salvar receita traduzida no banco
+    // Salvar receita traduzida no banco (silencioso)
     try {
       await salvarReceitaNoBanco(receitaConvertida);
-      console.log(`✅ Receita salva: ${receitaConvertida.nome}`);
     } catch (saveError) {
-      console.warn(`⚠️ Não foi possível salvar no banco:`, (saveError as Error).message);
-      // Continua mesmo se não conseguir salvar
+      // Continua mesmo se não conseguir salvar - não loga erro para performance
     }
 
     return receitaConvertida;
