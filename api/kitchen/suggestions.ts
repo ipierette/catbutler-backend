@@ -12,8 +12,54 @@ const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 // URLs das APIs
-const LIBRE_TRANSLATE_URL = 'https://libretranslate.de/translate';
+const LIBRE_TRANSLATE_URL = 'https://libretranslate.com/translate';
 const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
+
+// Mapeamento de categorias e origens do TheMealDB EN → PT
+const CATEGORIAS_ORIGENS: Record<string, string> = {
+  // Categorias
+  'chicken': 'Frango',
+  'beef': 'Carne Bovina',
+  'pork': 'Carne Suína',
+  'lamb': 'Cordeiro',
+  'fish': 'Peixe',
+  'seafood': 'Frutos do Mar',
+  'vegetarian': 'Vegetariano',
+  'vegan': 'Vegano',
+  'dessert': 'Sobremesa',
+  'starter': 'Entrada',
+  'side': 'Acompanhamento',
+  'pasta': 'Massa',
+  'miscellaneous': 'Diversos',
+
+  // Origens/Países
+  'american': 'Americano',
+  'british': 'Britânico',
+  'canadian': 'Canadense',
+  'chinese': 'Chinês',
+  'croatian': 'Croata',
+  'dutch': 'Holandês',
+  'egyptian': 'Egípcio',
+  'french': 'Francês',
+  'greek': 'Grego',
+  'indian': 'Indiano',
+  'irish': 'Irlandês',
+  'italian': 'Italiano',
+  'jamaican': 'Jamaicano',
+  'japanese': 'Japonês',
+  'kenyan': 'Queniano',
+  'malaysian': 'Malaio',
+  'mexican': 'Mexicano',
+  'moroccan': 'Marroquino',
+  'polish': 'Polonês',
+  'portuguese': 'Português',
+  'russian': 'Russo',
+  'spanish': 'Espanhol',
+  'thai': 'Tailandês',
+  'tunisian': 'Tunisiano',
+  'turkish': 'Turco',
+  'vietnamese': 'Vietnamita'
+};
 
 // Mapeamento de ingredientes comuns PT → EN
 const INGREDIENTES_COMUNS: Record<string, string> = {
@@ -178,12 +224,27 @@ async function traduzirParaIngles(texto: string): Promise<string> {
   }
 }
 
-// Traduzir texto inglês para português (para respostas do TheMealDB) - OTIMIZADO
+// Traduzir texto inglês para português (para respostas do TheMealDB) - MELHORADO
 async function traduzirParaPortugues(texto: string): Promise<string> {
   try {
-    // Se for texto curto, tentar tradução automática com retry (sem logs individuais)
+    // Se for texto vazio, retornar vazio
+    if (!texto || texto.trim().length === 0) {
+      return texto;
+    }
+
+    console.log(`🔤 Traduzindo: "${texto}" (${texto.length} chars)`);
+
+    // Primeiro, verificar se é categoria ou origem conhecida
+    const textoLower = texto.toLowerCase();
+    if (CATEGORIAS_ORIGENS[textoLower]) {
+      const traducao = CATEGORIAS_ORIGENS[textoLower];
+      console.log(`✅ Categoria/Origem mapeada: "${texto}" → "${traducao}"`);
+      return traducao;
+    }
+
+    // Para textos curtos (nome, categoria, origem), usar tradução automática
     if (texto.length < 100) {
-      for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      for (let tentativa = 1; tentativa <= 3; tentativa++) {
         try {
           const response = await axios.post(LIBRE_TRANSLATE_URL, {
             q: texto,
@@ -191,43 +252,56 @@ async function traduzirParaPortugues(texto: string): Promise<string> {
             target: 'pt',
             format: 'text'
           }, {
-            timeout: 5000,
-            headers: { 'Content-Type': 'application/json' }
+            timeout: 8000,
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'CatButler/1.0'
+            }
           });
 
-          const textoTraduzido = response.data.translatedText || response.data.result || texto;
-          return textoTraduzido;
+          const textoTraduzido = response.data.translatedText || response.data.result;
+          if (textoTraduzido && textoTraduzido !== texto) {
+            console.log(`✅ Traduzido: "${texto}" → "${textoTraduzido}"`);
+            return textoTraduzido;
+          }
 
         } catch (retryError) {
-          if (tentativa === 2) throw retryError;
-          await new Promise(resolve => setTimeout(resolve, 500 * tentativa));
+          console.warn(`⚠️ Tentativa ${tentativa} falhou para "${texto}"`);
+          if (tentativa === 3) throw retryError;
+          await new Promise(resolve => setTimeout(resolve, 1000 * tentativa));
         }
       }
     }
 
-    // Para textos longos (como instruções), usar IA para tradução mais precisa
+    // Para textos longos (instruções), usar IA para tradução mais precisa
     if (texto.length >= 100 && genAI && process.env.GEMINI_API_KEY) {
       try {
-        const prompt = `Traduza este texto de inglês para português brasileiro de forma natural:
+        console.log(`🤖 Traduzindo texto longo com IA...`);
+        const prompt = `Traduza este texto de inglês para português brasileiro de forma natural e precisa:
 
 "${texto}"
 
-Responda apenas com a tradução.`;
+Responda apenas com a tradução, sem comentários.`;
 
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         const result = await model.generateContent(prompt);
         const traducao = result.response.text().trim();
-        return traducao;
 
+        if (traducao && traducao !== texto) {
+          console.log(`✅ IA traduzido: "${texto.substring(0, 50)}..." → "${traducao.substring(0, 50)}..."`);
+          return traducao;
+        }
       } catch (aiError) {
-        // Fallback silencioso
+        console.warn('⚠️ Tradução com IA falhou:', (aiError as Error).message);
       }
     }
 
     // Fallback: retornar texto original
+    console.warn(`⚠️ Fallback: usando original "${texto}"`);
     return texto;
 
   } catch (error) {
+    console.warn(`❌ Erro na tradução "${texto}":`, (error as Error).message);
     return texto;
   }
 }
