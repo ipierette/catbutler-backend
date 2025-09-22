@@ -143,6 +143,20 @@ const RECEITAS_BRASILEIRAS_BASE: ReceitaBrasileira[] = [
 
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   try {
+    const { action } = req.query;
+    
+    // Ação para limpar duplicatas
+    if (action === 'clean-duplicates') {
+      await limparDuplicatas(res);
+      return;
+    }
+    
+    // Ação para verificar ingredientes
+    if (action === 'check-ingredients') {
+      await verificarIngredientes(res);
+      return;
+    }
+    
     console.log('🌐 Populando tabela com receitas brasileiras...');
     
     let inseridas = 0;
@@ -150,6 +164,19 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     
     for (const receita of RECEITAS_BRASILEIRAS_BASE) {
       try {
+        // Verificar se receita já existe para evitar duplicatas
+        const { data: existente } = await supabase
+          .from('receitas')
+          .select('id')
+          .eq('nome', receita.nome)
+          .eq('fonte', receita.fonte)
+          .single();
+
+        if (existente) {
+          console.log(`⚠️ Receita já existe: ${receita.nome}`);
+          continue;
+        }
+
         const { error } = await supabase
           .from('receitas')
           .insert({
@@ -161,6 +188,7 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
             tempo_estimado: receita.tempo_estimado,
             dificuldade: receita.dificuldade,
             imagem_url: receita.imagem_url,
+            fonte_url: receita.fonte_url,
             fonte: receita.fonte,
             ativo: true,
             verificado: true
@@ -191,5 +219,95 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     res.status(500).json({ error: 'Erro ao popular receitas' });
   }
 };
+
+// Função para limpar duplicatas
+async function limparDuplicatas(res: VercelResponse): Promise<void> {
+  try {
+    console.log('🧹 Limpando receitas duplicadas...');
+    
+    // Buscar duplicatas (mesmo nome + fonte)
+    const { data: duplicatas, error } = await supabase
+      .rpc('delete_duplicate_receitas');
+    
+    if (error) {
+      // Se RPC não existe, fazer manualmente
+      const { data: receitas } = await supabase
+        .from('receitas')
+        .select('id, nome, fonte, created_at')
+        .order('created_at', { ascending: true });
+      
+      const vistos = new Set();
+      const parasRemover = [];
+      
+      for (const receita of receitas || []) {
+        const chave = `${receita.nome}-${receita.fonte}`;
+        if (vistos.has(chave)) {
+          parasRemover.push(receita.id);
+        } else {
+          vistos.add(chave);
+        }
+      }
+      
+      if (parasRemover.length > 0) {
+        await supabase
+          .from('receitas')
+          .delete()
+          .in('id', parasRemover);
+      }
+      
+      res.json({
+        success: true,
+        message: `${parasRemover.length} duplicatas removidas`,
+        removidas: parasRemover.length
+      });
+    } else {
+      res.json({
+        success: true,
+        message: 'Duplicatas removidas com RPC',
+        data: duplicatas
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao limpar duplicatas:', error);
+    res.status(500).json({ error: 'Erro ao limpar duplicatas' });
+  }
+}
+
+// Função para verificar ingredientes
+async function verificarIngredientes(res: VercelResponse): Promise<void> {
+  try {
+    console.log('🔍 Verificando ingredientes das receitas...');
+    
+    const { data: receitas, error } = await supabase
+      .from('receitas')
+      .select('id, nome, ingredientes, fonte')
+      .limit(20);
+    
+    if (error) throw error;
+    
+    const estatisticas = {
+      total_receitas: receitas?.length || 0,
+      com_ingredientes: receitas?.filter(r => r.ingredientes && r.ingredientes.length > 0).length || 0,
+      sem_ingredientes: receitas?.filter(r => !r.ingredientes || r.ingredientes.length === 0).length || 0,
+      receitas_exemplo: receitas?.slice(0, 3).map(r => ({
+        nome: r.nome,
+        fonte: r.fonte,
+        ingredientes: r.ingredientes,
+        tem_ingredientes: r.ingredientes && r.ingredientes.length > 0
+      })) || []
+    };
+    
+    res.json({
+      success: true,
+      message: 'Verificação de ingredientes concluída',
+      estatisticas
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao verificar ingredientes:', error);
+    res.status(500).json({ error: 'Erro ao verificar ingredientes' });
+  }
+}
 
 export default withCors(handler);
