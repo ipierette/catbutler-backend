@@ -91,3 +91,4 @@ SELECT COUNT(*) as total_receitas FROM receitas;
 
 -- 10. Teste de autenticação (opcional)
 -- SELECT auth.uid() as current_user_id;
+
