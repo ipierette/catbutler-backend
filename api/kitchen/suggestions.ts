@@ -23,6 +23,21 @@ const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
 const translationCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas em ms
 
+// Rate limiting para TheMealDB - MAIS AGRESSIVO
+let lastTheMealDBCall = 0;
+const THEMEALDB_COOLDOWN = 30000; // 30 segundos entre chamadas
+
+// Flag para desabilitar TheMealDB temporariamente se rate limited
+let theMealDBDisabled = false;
+let theMealDBDisabledUntil = 0;
+
+// Opção para desabilitar completamente TheMealDB se necessário
+const THEMEALDB_ENABLED = process.env.THEMEALDB_ENABLED !== 'false';
+
+// Cache para resultados de sugestões (evita recomputar)
+const suggestionsCache = new Map<string, { receitas: ReceitaSugerida[], timestamp: number }>();
+const SUGGESTIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
 interface CacheEntry {
   translation: string;
   timestamp: number;
@@ -618,49 +633,50 @@ Responda apenas com a tradução, sem comentários.`;
 
 // === FUNÇÕES THEMEALDB ===
 
-// Buscar receitas no TheMealDB por ingrediente com retry e backoff
+// Buscar receitas no TheMealDB por ingrediente com rate limiting inteligente
 async function buscarReceitasTheMealDB(ingrediente: string): Promise<MealDBResponse> {
-  const maxRetries = 3;
-  const baseDelay = 1000; // 1 segundo
-
-  for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
-    try {
-      console.log(`🌐 Buscando no TheMealDB: ${ingrediente} (tentativa ${tentativa}/${maxRetries})`);
-
-      const response = await axios.get(`${THEMEALDB_BASE_URL}/filter.php?i=${encodeURIComponent(ingrediente)}`, {
-        timeout: 8000,
-        headers: {
-          'User-Agent': 'CatButler/1.0',
-          'Accept': 'application/json'
-        }
-      });
-
-      return response.data;
-
-    } catch (error: any) {
-      const statusCode = error.response?.status;
-      const isRateLimited = statusCode === 429;
-      const isServerError = statusCode >= 500;
-
-      if (isRateLimited || isServerError) {
-        if (tentativa === maxRetries) {
-          console.error(`❌ TheMealDB falhou após ${maxRetries} tentativas para ${ingrediente}:`, error.message);
-          break;
-        }
-
-        const delay = baseDelay * Math.pow(2, tentativa - 1); // Backoff exponencial
-        console.warn(`⚠️ Tentativa ${tentativa} falhou para ${ingrediente}. Aguardando ${delay}ms antes da próxima...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-
-      } else {
-        // Erro não recuperável (ex: 404, 400)
-        console.error(`❌ Erro não recuperável no TheMealDB para ${ingrediente}:`, error.message);
-        break;
-      }
+  try {
+    // Verificar se TheMealDB está temporariamente desabilitado
+    const agora = Date.now();
+    if (theMealDBDisabled && agora < theMealDBDisabledUntil) {
+      console.log(`🚫 TheMealDB temporariamente desabilitado até ${new Date(theMealDBDisabledUntil).toISOString()}`);
+      return { meals: null };
     }
-  }
 
-  return { meals: null };
+    // Rate limiting: verificar se já passou tempo suficiente desde a última chamada
+    const tempoDesdeUltimaChamada = agora - lastTheMealDBCall;
+
+    if (tempoDesdeUltimaChamada < THEMEALDB_COOLDOWN) {
+      const tempoParaEsperar = THEMEALDB_COOLDOWN - tempoDesdeUltimaChamada;
+      console.log(`⏳ Rate limiting: aguardando ${tempoParaEsperar}ms antes da próxima chamada TheMealDB...`);
+      await new Promise(resolve => setTimeout(resolve, tempoParaEsperar));
+    }
+
+    console.log(`🌐 Buscando no TheMealDB: ${ingrediente}`);
+
+    const response = await axios.get(`${THEMEALDB_BASE_URL}/filter.php?i=${encodeURIComponent(ingrediente)}`, {
+      timeout: 3000, // Timeout ainda menor
+      headers: {
+        'User-Agent': 'CatButler/1.0',
+        'Accept': 'application/json'
+      }
+    });
+
+    lastTheMealDBCall = Date.now(); // Atualizar timestamp da última chamada
+    return response.data;
+
+  } catch (error: any) {
+    console.error(`❌ Erro no TheMealDB para ${ingrediente}:`, error.message);
+
+    // Para rate limiting (429), desabilitar temporariamente por 5 minutos
+    if (error.response?.status === 429) {
+      console.warn(`🚫 TheMealDB rate limited. Desabilitando por 5 minutos...`);
+      theMealDBDisabled = true;
+      theMealDBDisabledUntil = Date.now() + (5 * 60 * 1000); // 5 minutos
+    }
+
+    return { meals: null };
+  }
 }
 
 // Obter detalhes completos de uma receita do TheMealDB
@@ -849,7 +865,7 @@ RESPONDA APENAS COM JSON VÁLIDO:
   }
 ]`;
 
-  // Tentar múltiplas APIs com retry para cada uma
+  // Tentar apenas APIs confiáveis
   const apisParaTentar = [
     {
       nome: 'Gemini 1.5 Flash',
@@ -863,39 +879,21 @@ RESPONDA APENAS COM JSON VÁLIDO:
       }
     },
     {
-      nome: 'Groq Mixtral',
+      nome: 'Groq Llama 3.1',
       testar: async () => {
         if (!groq || !process.env.GROQ_API_KEY) return null;
-        console.log('🤖 Tentando Groq Mixtral...');
+        console.log('🤖 Tentando Groq Llama 3.1 8B...');
 
         const result = await groq.chat.completions.create({
           messages: [
             { role: 'system', content: 'Você é o Chef Bruno, especialista em culinária brasileira criativa. Responda sempre em português brasileiro.' },
             { role: 'user', content: prompt }
           ],
-          model: 'mixtral-8x7b-32768',
-          temperature: 0.8,
-          max_tokens: 1500
+          model: 'llama-3.1-8b-instant', // Modelo disponível e rápido
+          temperature: 0.7,
+          max_tokens: 1000
         });
-        return { resposta: result.choices[0]?.message?.content || '', modelo: 'Groq Mixtral' };
-      }
-    },
-    {
-      nome: 'HuggingFace FLAN-T5',
-      testar: async () => {
-        const hfToken = process.env.HF_TOKEN_COZINHA || process.env.HF_TOKEN_MERCADO;
-        if (!hfToken) return null;
-        console.log('🤖 Tentando HuggingFace FLAN-T5...');
-
-        const response = await axios.post(
-          'https://api-inference.huggingface.co/models/google/flan-t5-base',
-          { inputs: prompt, parameters: { max_length: 500, temperature: 0.8 } },
-          {
-            headers: { 'Authorization': `Bearer ${hfToken}` },
-            timeout: 10000
-          }
-        );
-        return { resposta: response.data[0]?.generated_text || '', modelo: 'HuggingFace FLAN-T5' };
+        return { resposta: result.choices[0]?.message?.content || '', modelo: 'Groq Llama 3.1' };
       }
     }
   ];
@@ -903,9 +901,23 @@ RESPONDA APENAS COM JSON VÁLIDO:
   let resposta = '';
   let modeloUsado = '';
 
+  // Flag para controlar APIs desabilitadas
+  let geminiQuotaExhausted = false;
+  let groqQuotaExhausted = false;
+
   // Tentar cada API uma vez
   for (const api of apisParaTentar) {
     try {
+      // Pular APIs com quota esgotada
+      if (api.nome.includes('Gemini') && geminiQuotaExhausted) {
+        console.log('⏭️ Pulando Gemini - quota esgotada');
+        continue;
+      }
+      if (api.nome.includes('Groq') && groqQuotaExhausted) {
+        console.log('⏭️ Pulando Groq - quota esgotada');
+        continue;
+      }
+
       const resultado = await api.testar();
       if (resultado && resultado.resposta) {
         resposta = resultado.resposta;
@@ -913,8 +925,20 @@ RESPONDA APENAS COM JSON VÁLIDO:
         console.log(`✅ ${modeloUsado} funcionou!`);
         break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn(`❌ ${api.nome} falhou:`, (error as Error).message);
+
+      // Marcar APIs com quota esgotada
+      if (error.message && error.message.includes('quota') && error.message.includes('exceeded')) {
+        if (api.nome.includes('Gemini')) {
+          geminiQuotaExhausted = true;
+          console.warn('🚫 Gemini quota esgotada - pulando futuras tentativas');
+        }
+        if (api.nome.includes('Groq')) {
+          groqQuotaExhausted = true;
+          console.warn('🚫 Groq quota esgotada - pulando futuras tentativas');
+        }
+      }
     }
   }
 
@@ -1002,10 +1026,30 @@ Preciso das minhas APIs funcionando para dar sugestões mais criativas. Tente no
 }
 
 
-// Handler principal da API - SIMPLIFICADO (sem TheMealDB)
+// Função auxiliar para cache de sugestões
+function getSuggestionsCacheKey(ingredientes: string[]): string {
+  return ingredientes.sort().join(',').toLowerCase();
+}
+
+function getFromSuggestionsCache(key: string): ReceitaSugerida[] | null {
+  const entry = suggestionsCache.get(key);
+  if (entry && Date.now() - entry.timestamp < SUGGESTIONS_CACHE_TTL) {
+    return entry.receitas;
+  }
+  if (entry) {
+    suggestionsCache.delete(key);
+  }
+  return null;
+}
+
+function saveToSuggestionsCache(key: string, receitas: ReceitaSugerida[]): void {
+  suggestionsCache.set(key, { receitas, timestamp: Date.now() });
+}
+
+// Handler principal da API - OTIMIZADO
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   const tempoInicio = Date.now();
-  
+
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -1020,10 +1064,36 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     const { ingredientes } = req.body;
 
     if (!ingredientes || !Array.isArray(ingredientes) || ingredientes.length === 0) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: 'Ingredientes são obrigatórios',
         message: 'Envie uma lista de ingredientes no corpo da requisição'
       });
+      return;
+    }
+
+    // Verificar cache de sugestões primeiro
+    const cacheKey = getSuggestionsCacheKey(ingredientes);
+    const cachedResult = getFromSuggestionsCache(cacheKey);
+    if (cachedResult) {
+      console.log('✅ Cache hit para sugestões - retornando resultado em cache');
+      const tempoResposta = Date.now() - tempoInicio;
+      const response: SugestaoResponse = {
+        success: true,
+        data: {
+          receitas: cachedResult,
+          ingredientesPesquisados: ingredientes,
+          total: cachedResult.length,
+          fontes: {
+            brasileiras: cachedResult.filter(r => r.fonte === 'local').length,
+            ia_criativas: cachedResult.filter(r => r.fonte === 'ia').length,
+            internacionais: cachedResult.filter(r => r.fonte === 'themealdb').length
+          },
+          tempoResposta,
+          traducao_ativa: true,
+          receitas_salvas_no_banco: cachedResult.filter(r => r.fonte === 'themealdb').length
+        }
+      };
+      res.status(200).json(response);
       return;
     }
 
@@ -1060,95 +1130,67 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       console.error('⚠️ Erro ao buscar receitas locais:', error);
     }
 
-    // 2. BUSCAR RECEITAS NO THEMEALDB (receitas internacionais)
-    try {
-      console.log('🌐 Buscando receitas no TheMealDB...');
+    // 2. BUSCAR RECEITAS NO THEMEALDB (receitas internacionais) - DESABILITADO TEMPORARIAMENTE
+    if (THEMEALDB_ENABLED) {
+      try {
+        console.log('🌐 Buscando receitas no TheMealDB...');
 
-      // Tentar com múltiplos ingredientes para melhores resultados
-      const ingredientesParaBuscar: string[] = [];
+        // Tentar APENAS com o primeiro ingrediente para economizar quota
+        const primeiroIngrediente = ingredientes[0];
+        let ingredienteEn = primeiroIngrediente;
 
-      // Tentar traduzir os primeiros 3 ingredientes para economizar quota
-      const maxIngredientesParaBuscar = Math.min(ingredientes.length, 3);
-
-      for (let i = 0; i < maxIngredientesParaBuscar; i++) {
-        const ingrediente = ingredientes[i];
         try {
-          const traducao = await traduzirParaIngles(ingrediente);
-          ingredientesParaBuscar.push(traducao || ingrediente);
-          console.log(`🔤 Preparando busca: "${ingrediente}" → "${traducao || ingrediente}"`);
-        } catch (traducaoError) {
-          console.warn(`⚠️ Tradução falhou para "${ingrediente}", usando original`);
-          ingredientesParaBuscar.push(ingrediente);
-        }
-      }
-
-      // Buscar receitas para cada ingrediente (paralelo com limite)
-      const promises = ingredientesParaBuscar.map(async (ingredienteEn, index) => {
-        try {
-          console.log(`🔍 Buscando no TheMealDB com: "${ingredienteEn}"`);
-          const resultadoMealDB = await buscarReceitasTheMealDB(ingredienteEn);
-
-          if (resultadoMealDB.meals && resultadoMealDB.meals.length > 0) {
-            // Processar apenas 1 receita por ingrediente para não sobrecarregar
-            const receitaParaProcessar = resultadoMealDB.meals.slice(0, 1);
-            console.log(`✅ Encontradas ${resultadoMealDB.meals.length} receitas para "${ingredienteEn}", processando ${receitaParaProcessar.length}`);
-
-            for (const meal of receitaParaProcessar) {
-              try {
-                const detalhes = await obterDetalhesTheMealDB(meal.idMeal);
-                if (detalhes) {
-                  const receitaConvertida = await converterESalvarTheMealDB(detalhes);
-                  receitaConvertida.matchScore = calcularMatchScore(
-                    receitaConvertida.ingredientes,
-                    ingredientes
-                  );
-                  return receitaConvertida;
-                }
-              } catch (convError) {
-                console.error(`⚠️ Erro ao converter receita TheMealDB para ${ingredienteEn}:`, convError);
-              }
-            }
-          } else {
-            console.log(`⚠️ Nenhuma receita encontrada no TheMealDB para "${ingredienteEn}"`);
+          const traducao = await traduzirParaIngles(primeiroIngrediente);
+          if (traducao && traducao !== primeiroIngrediente) {
+            ingredienteEn = traducao;
+            console.log(`🔤 Tradução: "${primeiroIngrediente}" → "${ingredienteEn}"`);
           }
-          return null;
-        } catch (error) {
-          console.error(`❌ Erro ao buscar no TheMealDB para "${ingredienteEn}":`, error);
-          return null;
+        } catch (traducaoError) {
+          console.warn(`⚠️ Tradução falhou, usando original: "${primeiroIngrediente}"`);
         }
-      });
 
-      // Executar buscas em paralelo com limite de concorrência
-      const receitasTheMealDB = [];
-      const batchSize = 2; // Máximo 2 buscas simultâneas
+        // Buscar no TheMealDB com apenas 1 ingrediente
+        const resultadoMealDB = await buscarReceitasTheMealDB(ingredienteEn);
 
-      for (let i = 0; i < promises.length; i += batchSize) {
-        const batch = promises.slice(i, i + batchSize);
-        const resultados = await Promise.all(batch);
-        receitasTheMealDB.push(...resultados.filter(r => r !== null));
+        if (resultadoMealDB.meals && resultadoMealDB.meals.length > 0) {
+          // Processar apenas 1 receita para não sobrecarregar
+          const meal = resultadoMealDB.meals[0];
+          console.log(`✅ Encontrada 1 receita para "${ingredienteEn}", processando...`);
+
+          try {
+            const detalhes = await obterDetalhesTheMealDB(meal.idMeal);
+            if (detalhes) {
+              const receitaConvertida = await converterESalvarTheMealDB(detalhes);
+              receitaConvertida.matchScore = calcularMatchScore(
+                receitaConvertida.ingredientes,
+                ingredientes
+              );
+              receitasEncontradas.push(receitaConvertida);
+              console.log(`✅ 1 receita do TheMealDB processada e salva`);
+            }
+          } catch (convError) {
+            console.error('⚠️ Erro ao converter receita TheMealDB:', convError);
+          }
+        } else {
+          console.log('⚠️ Nenhuma receita encontrada no TheMealDB');
+        }
+
+      } catch (error) {
+        console.error('⚠️ Erro ao buscar no TheMealDB:', error);
       }
-
-      // Remover duplicatas baseado no ID
-      const receitasUnicas = receitasTheMealDB.filter((receita, index, self) =>
-        index === self.findIndex(r => r.id === receita.id)
-      );
-
-      receitasEncontradas.push(...receitasUnicas);
-      console.log(`✅ ${receitasUnicas.length} receitas únicas do TheMealDB processadas e salvas`);
-
-    } catch (error) {
-      console.error('⚠️ Erro ao buscar no TheMealDB:', error);
+    } else {
+      console.log('🚫 TheMealDB temporariamente desabilitado para preservar quota');
     }
 
     // 3. GERAR SUGESTÕES CRIATIVAS COM IA (APENAS SE NECESSÁRIO)
     let sugestoesIA = [];
-    if (receitasEncontradas.length < 4) {
-    try {
+    if (receitasEncontradas.length < 3) {
+      try {
         console.log(`🤖 ${receitasEncontradas.length} receitas totais - gerando IA...`);
         sugestoesIA = await gerarSugestoesCreativasIA(ingredientes);
-      receitasEncontradas.push(...sugestoesIA);
+        receitasEncontradas.push(...sugestoesIA);
         console.log(`✅ ${sugestoesIA.length} sugestões criativas geradas`);
-    } catch (error) {
+      } catch (error) {
         console.error('⚠️ Erro ao gerar sugestões IA:', error);
       }
     } else {
@@ -1160,15 +1202,18 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
       const prioridade = { local: 3, themealdb: 2, ia: 1 };
       const prioA = prioridade[a.fonte];
       const prioB = prioridade[b.fonte];
-      
+
       if (prioA !== prioB) {
         return prioB - prioA;
       }
       return (b.matchScore || 0) - (a.matchScore || 0);
     });
 
-    const receitasFinais = receitasEncontradas.slice(0, 12);
+    const receitasFinais = receitasEncontradas.slice(0, 8); // Reduzir para 8 receitas
     const tempoResposta = Date.now() - tempoInicio;
+
+    // Salvar resultado no cache de sugestões
+    saveToSuggestionsCache(cacheKey, receitasFinais);
 
     const response: SugestaoResponse = {
       success: true,
