@@ -20,7 +20,7 @@ const LIBRE_TRANSLATE_URLS = [
 const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
 
 // Cache simples para traduções (em memória)
-const translationCache = new Map<string, string>();
+const translationCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas em ms
 
 interface CacheEntry {
@@ -875,8 +875,7 @@ RESPONDA APENAS COM JSON VÁLIDO:
           ],
           model: 'mixtral-8x7b-32768',
           temperature: 0.8,
-          max_tokens: 1500,
-          timeout: 10000
+          max_tokens: 1500
         });
         return { resposta: result.choices[0]?.message?.content || '', modelo: 'Groq Mixtral' };
       }
