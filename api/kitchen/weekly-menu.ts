@@ -9,14 +9,14 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SE
 // Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições
 async function gerarCardapioSemanalIA(): Promise<string> {
   if (!groq) throw new Error('GROQ não configurado');
-  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal completo, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). Não repita receitas. Use pratos típicos brasileiros, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
+  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal completo, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). Não repita receitas. Use pratos típicos brasileiros, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nIMPORTANTE: Cada vez que este comando for chamado, gere um cardápio completamente diferente, mesmo para o mesmo usuário. Nunca repita o cardápio anterior. Seja ainda mais criativo e varie bastante as sugestões a cada chamada.\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
   const completion = await groq.chat.completions.create({
     messages: [
       { role: 'system', content: 'Você é um chef IA brasileiro.' },
       { role: 'user', content: prompt }
     ],
     model: 'llama-3.3-70b-versatile',
-    temperature: 0.7,
+    temperature: 1.0,
     max_tokens: 700,
     top_p: 1,
     stream: false
