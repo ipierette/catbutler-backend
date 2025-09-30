@@ -24,14 +24,23 @@ async function gerarCardapioSemanalIA(): Promise<string> {
   return completion.choices[0]?.message?.content || '';
 }
 
-const handler = async (req: VercelRequest, res: VercelResponse) => {
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
+
+const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Método não permitido' });
+    return;
+  }
   try {
     const cardapio = await gerarCardapioSemanalIA();
     res.status(200).json({ success: true, cardapio });
+    return;
   } catch (error) {
     res.status(500).json({ success: false, error: 'Erro ao gerar cardápio semanal' });
+    return;
   }
 };
 
