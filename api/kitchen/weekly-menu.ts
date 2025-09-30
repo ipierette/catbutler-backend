@@ -20,11 +20,11 @@ async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise
       { role: 'system', content: 'Você é um chef IA brasileiro.' },
       { role: 'user', content: prompt }
     ],
-    model: 'llama-3.3-70b-versatile',
-    temperature: 1.2,
-    max_tokens: 700,
-    top_p: 1.1,
-    stream: false
+  model: 'llama-3.3-70b-versatile',
+  temperature: 1.2,
+  max_tokens: 700,
+  top_p: 1.0, // Corrigido para o máximo permitido
+  stream: false
   });
   return completion.choices[0]?.message?.content || '';
 }
