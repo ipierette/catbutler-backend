@@ -12,21 +12,27 @@ async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise
   if (!groq) throw new Error('GROQ não configurado');
   let restricao = '';
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
-    restricao = `\n\nATENÇÃO: O usuário NÃO gosta dos seguintes ingredientes e não pode sugerir nenhum prato que contenha: ${ingredientesProibidos.join(', ')}. Exclua qualquer prato que leve esses ingredientes, mesmo como tempero ou acompanhamento.`;
+    restricao = `\n\nATENÇÃO: O usuário NÃO gosta dos seguintes ingredientes e não pode sugerir nenhum prato que contenha: ${ingredientesProibidos.join(', ')}. Exclua absolutamente qualquer prato que leve esses ingredientes, mesmo como tempero, acompanhamento ou parte do nome do prato. Se não tiver certeza, NÃO sugira. NÃO repita pratos nem variações. Se sugerir algum prato proibido, será penalizado.`;
   }
-  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal completo, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). Não repita receitas. Use pratos típicos brasileiros, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nIMPORTANTE: Cada vez que este comando for chamado, gere um cardápio completamente diferente, mesmo para o mesmo usuário. Nunca repita o cardápio anterior. Varie bastante os tipos de proteína (carne, peixe, frango, ovos, vegetariano, vegano), inclua pratos regionais, internacionais e pelo menos um prato vegano na semana. Não repita a estrutura dos dias. Seja ainda mais criativo e varie bastante as sugestões a cada chamada.${restricao}\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
+  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal COMPLETAMENTE DIFERENTE a cada chamada, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). NÃO repita receitas, nomes de pratos, nem estruturas. Use pratos típicos brasileiros, regionais, internacionais, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nIMPORTANTE: Cada vez que este comando for chamado, gere um cardápio TOTALMENTE diferente, mesmo para o mesmo usuário. Varie bastante os tipos de proteína (carne, peixe, frango, ovos, vegetariano, vegano), inclua pratos regionais, internacionais e pelo menos um prato vegano na semana. NÃO repita a estrutura dos dias. Seja ainda mais criativo e varie bastante as sugestões a cada chamada. NÃO repita pratos nem ingredientes principais. ${restricao}\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
   const completion = await groq.chat.completions.create({
     messages: [
       { role: 'system', content: 'Você é um chef IA brasileiro.' },
       { role: 'user', content: prompt }
     ],
-  model: 'llama-3.3-70b-versatile',
-  temperature: 1.2,
-  max_tokens: 700,
-  top_p: 1.0, // Corrigido para o máximo permitido
-  stream: false
+    model: 'llama-3.3-70b-versatile',
+    temperature: 1.2,
+    max_tokens: 700,
+    top_p: 1.0,
+    stream: false
   });
-  return completion.choices[0]?.message?.content || '';
+  let resultado = completion.choices[0]?.message?.content || '';
+  // Pós-processamento: remove linhas com ingredientes proibidos (caso a IA ignore)
+  if (ingredientesProibidos && ingredientesProibidos.length > 0) {
+    const proibidosRegex = new RegExp(ingredientesProibidos.map(i => i.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+    resultado = resultado.split('\n').filter(linha => !proibidosRegex.test(linha)).join('\n');
+  }
+  return resultado;
 }
 
 
