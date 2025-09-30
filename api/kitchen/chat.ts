@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/cors';
 import Groq from 'groq-sdk';
-import axios from 'axios';
+
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 // Helpers do suggestions
@@ -29,7 +29,8 @@ type Receita = {
 
 function contemIngles(texto: string): boolean {
   // Simplificado: busca palavras-chave mais comuns
-  return /\b(the|and|chicken|beef|instructions|ingredients|add|cook|bake|oven|minutes|salt|pepper|oil|water|milk|egg|sugar|flour|butter|onion|garlic|cheese|cream|meat|fish|rice|pasta|sauce|serve|pan|boil|fry|grill|roast|slice|chop|pour|stir|heat|let|cool|until|ready|dish|plate|garnish|enjoy)\b/i.test(texto);
+  // Simplificado para evitar complexidade excessiva
+  return /\b(the|and|chicken|beef|instructions|ingredients|cook|egg|sugar|flour|butter|onion|garlic)\b/i.test(texto);
 }
 
 
@@ -46,11 +47,7 @@ async function gerarSalvarReceitasIA(ingredientes: string[], respostaIA: string)
     ativo: true,
     verificado: false
   };
-  try {
-    await supabase.from('receitas').insert(receita);
-  } catch (e) {
-    // Ignorar erro de salvamento
-  }
+  await supabase.from('receitas').insert(receita);
   return [receita];
 }
 
@@ -228,7 +225,7 @@ Responda sempre em português brasileiro, seja prestativo e didático. Mantenha 
           content: prompt
         }
       ],
-  model: 'llama3-70b-8192',
+  model: 'llama-3.3-70b-versatile',
       temperature: 0.7,
       max_tokens: 200,
       top_p: 1,
