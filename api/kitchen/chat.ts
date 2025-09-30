@@ -5,13 +5,10 @@ import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 // Helpers do suggestions
-import { traduzirTituloReceita, traduzirParaPortugues, traduzirIngredientesOtimizado } from '../kitchen/suggestions';
-
 // Configuração das APIs
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-const THEMEALDB_BASE_URL = 'https://www.themealdb.com/api/json/v1/1';
 // Função para buscar, traduzir e salvar receitas do TheMealDB
 type Receita = {
   id?: string;
@@ -35,128 +32,26 @@ function contemIngles(texto: string): boolean {
   return /\b(the|and|chicken|beef|instructions|ingredients|add|cook|bake|oven|minutes|salt|pepper|oil|water|milk|egg|sugar|flour|butter|onion|garlic|cheese|cream|meat|fish|rice|pasta|sauce|serve|pan|boil|fry|grill|roast|slice|chop|pour|stir|heat|let|cool|until|ready|dish|plate|garnish|enjoy)\b/i.test(texto);
 }
 
-async function buscarTraduzirSalvarReceitas(ingredientes: string[]): Promise<Receita[]> {
-  const receitas: Receita[] = [];
 
-  // 1. Buscar receitas no próprio banco que contenham os ingredientes
-  for (const ingrediente of ingredientes) {
-    try {
-      const { data: receitasBanco, error } = await supabase
-        .from('receitas')
-        .select('*')
-        .ilike('ingredientes', `%${ingrediente}%`);
-      if (error) throw error;
-      if (receitasBanco && receitasBanco.length > 0) {
-        for (const receita of receitasBanco as Receita[]) {
-          const texto = (receita.nome || '') + ' ' + (receita.instrucoes || '');
-          if (contemIngles(texto)) {
-            try {
-              const nome = await traduzirTituloReceita(receita.nome);
-              const instrucoes = await traduzirParaPortugues(receita.instrucoes);
-              const categoria = receita.categoria ? await traduzirParaPortugues(receita.categoria) : undefined;
-              const origem = receita.origem ? await traduzirParaPortugues(receita.origem) : undefined;
-              const ingredientesPT = await traduzirIngredientesOtimizado(receita.ingredientes || []);
-              await supabase.from('receitas').delete().eq('id', receita.id);
-              const receitaTraduzida: Receita = {
-                ...receita,
-                nome,
-                instrucoes,
-                categoria,
-                origem,
-                ingredientes: ingredientesPT,
-                external_id: receita.external_id ? receita.external_id.replace('-en', '-pt') : undefined
-              };
-              await supabase.from('receitas').insert(receitaTraduzida);
-              receitas.push(receitaTraduzida);
-            } catch (traducaoErr) {
-              // Se falhar tradução, ignora e não insere
-              continue;
-            }
-          } else {
-            receitas.push(receita);
-          }
-        }
-      }
-    } catch (err) {
-      // Ignora erro e segue para próxima fonte
-      continue;
-    }
+// Função para gerar e salvar receitas IA a partir dos ingredientes fornecidos
+async function gerarSalvarReceitasIA(ingredientes: string[], respostaIA: string): Promise<Receita[]> {
+  // Simples: salva a resposta da IA como uma nova receita no banco
+  // (pode ser expandido para extrair múltiplas receitas do texto futuramente)
+  if (!ingredientes || ingredientes.length === 0 || !respostaIA) return [];
+  const receita: Receita = {
+    nome: `Receita criada com IA (${ingredientes.slice(0,3).join(', ')})`,
+    instrucoes: respostaIA,
+    ingredientes,
+    fonte: 'ia',
+    ativo: true,
+    verificado: false
+  };
+  try {
+    await supabase.from('receitas').insert(receita);
+  } catch (e) {
+    // Ignorar erro de salvamento
   }
-
-  // 2. Buscar receitas externas (TheMealDB) se não houver suficientes
-  if (receitas.length < 2) {
-    for (const ingrediente of ingredientes) {
-      let meals: any[] | null = null;
-      try {
-        const response = await axios.get(`${THEMEALDB_BASE_URL}/filter.php?i=${encodeURIComponent(ingrediente)}`);
-        meals = response.data.meals;
-      } catch (err) {
-        continue;
-      }
-      if (!meals || meals.length === 0) continue;
-      for (const meal of meals.slice(0, 2)) {
-        let mealDetail: any = null;
-        try {
-          const detailResp = await axios.get(`${THEMEALDB_BASE_URL}/lookup.php?i=${meal.idMeal}`);
-          mealDetail = detailResp.data.meals?.[0];
-        } catch (err) {
-          continue;
-        }
-        if (!mealDetail) continue;
-        try {
-          const nome = await traduzirTituloReceita(mealDetail.strMeal);
-          const instrucoes = await traduzirParaPortugues(mealDetail.strInstructions);
-          const categoria = mealDetail.strCategory ? await traduzirParaPortugues(mealDetail.strCategory) : undefined;
-          const origem = mealDetail.strArea ? await traduzirParaPortugues(mealDetail.strArea) : undefined;
-          const ingredientesArr: string[] = [];
-          for (let i = 1; i <= 20; i++) {
-            const ing = mealDetail[`strIngredient${i}`]?.trim();
-            const med = mealDetail[`strMeasure${i}`]?.trim();
-            if (ing) ingredientesArr.push(med ? `${med} ${ing}` : ing);
-          }
-          const ingredientesPT = await traduzirIngredientesOtimizado(ingredientesArr);
-          let tempo_estimado = '30min';
-          if (ingredientesArr.length > 10) tempo_estimado = '1h';
-          else if (ingredientesArr.length > 5) tempo_estimado = '45min';
-          let dificuldade = 'Fácil';
-          if (ingredientesArr.length > 12) dificuldade = 'Difícil';
-          else if (ingredientesArr.length > 7) dificuldade = 'Médio';
-          const receita: Receita = {
-            external_id: `themealdb-${mealDetail.idMeal}`,
-            nome,
-            categoria,
-            origem,
-            instrucoes,
-            ingredientes: ingredientesPT,
-            tempo_estimado,
-            dificuldade,
-            imagem_url: mealDetail.strMealThumb || '',
-            fonte_url: `https://www.themealdb.com/meal/${mealDetail.idMeal}`,
-            fonte: 'themealdb',
-            ativo: true,
-            verificado: true
-          };
-          try {
-            const { data: existente } = await supabase
-              .from('receitas')
-              .select('id')
-              .eq('external_id', receita.external_id)
-              .single();
-            if (!existente) {
-              await supabase.from('receitas').insert(receita);
-            }
-          } catch (saveErr) {
-            // Ignora erro de salvamento
-          }
-          receitas.push(receita);
-        } catch (traducaoErr) {
-          // Ignora erro de tradução
-          continue;
-        }
-      }
-    }
-  }
-  return receitas;
+  return [receita];
 }
 
 interface ChatMessage {
@@ -460,23 +355,23 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     console.log('[Chat] Prompt enviado para IA:', prompt);
     console.log('[Chat] Resposta da IA:', respostaIA);
 
-    // Se a mensagem pedir receita ou ingredientes, buscar receitas externas, traduzir e salvar
-    let receitasExternas: any[] = [];
+    // Se a mensagem pedir receita ou ingredientes, gerar e salvar receita IA
+    let receitasIA: any[] = [];
     if (contexto === 'ingredientes' && ingredientes && ingredientes.length > 0) {
-      receitasExternas = await buscarTraduzirSalvarReceitas(ingredientes.slice(0, 2)); // Limitar para não esgotar cota
+      receitasIA = await gerarSalvarReceitasIA(ingredientes.slice(0, 10), respostaIA);
     }
 
     // Gerar sugestões complementares
     const sugestoes = gerarSugestoes(mensagem, ingredientes);
 
-    const response: ChatResponse & { receitasExternas?: any[] } = {
+    const response: ChatResponse & { receitasIA?: any[] } = {
       success: true,
       data: {
         resposta: respostaIA,
         timestamp: Date.now(),
         sugestoes
       },
-      receitasExternas: receitasExternas.length > 0 ? receitasExternas : undefined
+      receitasIA: receitasIA.length > 0 ? receitasIA : undefined
     };
 
     // Adicionar informações de limite para visitantes
