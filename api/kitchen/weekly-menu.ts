@@ -6,19 +6,24 @@ import { createClient } from '@supabase/supabase-js';
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-// Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições
-async function gerarCardapioSemanalIA(): Promise<string> {
+
+// Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições e ingredientes proibidos
+async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise<string> {
   if (!groq) throw new Error('GROQ não configurado');
-  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal completo, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). Não repita receitas. Use pratos típicos brasileiros, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nIMPORTANTE: Cada vez que este comando for chamado, gere um cardápio completamente diferente, mesmo para o mesmo usuário. Nunca repita o cardápio anterior. Seja ainda mais criativo e varie bastante as sugestões a cada chamada.\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
+  let restricao = '';
+  if (ingredientesProibidos && ingredientesProibidos.length > 0) {
+    restricao = `\n\nATENÇÃO: O usuário NÃO gosta dos seguintes ingredientes e não pode sugerir nenhum prato que contenha: ${ingredientesProibidos.join(', ')}. Exclua qualquer prato que leve esses ingredientes, mesmo como tempero ou acompanhamento.`;
+  }
+  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal completo, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). Não repita receitas. Use pratos típicos brasileiros, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nIMPORTANTE: Cada vez que este comando for chamado, gere um cardápio completamente diferente, mesmo para o mesmo usuário. Nunca repita o cardápio anterior. Varie bastante os tipos de proteína (carne, peixe, frango, ovos, vegetariano, vegano), inclua pratos regionais, internacionais e pelo menos um prato vegano na semana. Não repita a estrutura dos dias. Seja ainda mais criativo e varie bastante as sugestões a cada chamada.${restricao}\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
   const completion = await groq.chat.completions.create({
     messages: [
       { role: 'system', content: 'Você é um chef IA brasileiro.' },
       { role: 'user', content: prompt }
     ],
     model: 'llama-3.3-70b-versatile',
-    temperature: 1.0,
+    temperature: 1.2,
     max_tokens: 700,
-    top_p: 1,
+    top_p: 1.1,
     stream: false
   });
   return completion.choices[0]?.message?.content || '';
@@ -35,7 +40,14 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     return;
   }
   try {
-    const cardapio = await gerarCardapioSemanalIA();
+    // Permite receber ingredientesProibidos no body (JSON)
+    let ingredientesProibidos: string[] | undefined = undefined;
+    if (req.body && typeof req.body === 'object') {
+      if (Array.isArray(req.body.ingredientesProibidos)) {
+        ingredientesProibidos = req.body.ingredientesProibidos.map((i: any) => String(i)).filter(Boolean);
+      }
+    }
+    const cardapio = await gerarCardapioSemanalIA(ingredientesProibidos);
     res.status(200).json({ success: true, cardapio });
     return;
   } catch (error) {
