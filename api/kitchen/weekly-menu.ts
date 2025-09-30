@@ -51,7 +51,8 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     res.status(200).json({ success: true, cardapio });
     return;
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Erro ao gerar cardápio semanal' });
+    console.error('[WEEKLY MENU ERROR]', error);
+    res.status(500).json({ success: false, error: (error instanceof Error ? error.message : String(error)) });
     return;
   }
 };
