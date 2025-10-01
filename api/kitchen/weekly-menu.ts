@@ -56,8 +56,8 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
       { role: 'user', content: prompt }
     ],
     model: 'llama-3.3-70b-versatile',
-    temperature: 2.0,
-    max_tokens: 900,
+    temperature: 1.2,
+    max_tokens: 1200,
     top_p: 1.0,
     stream: false
   });
