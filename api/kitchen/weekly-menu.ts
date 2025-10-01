@@ -17,7 +17,7 @@ Se houver dúvida sobre a presença de algum ingrediente proibido, NÃO sugira o
 Jamais repita pratos nem crie variações disfarçadas.  
 Se algum item proibido for sugerido, será considerado erro grave.`;
   }
-  const prompt = `🍽️ Atue como um chef brasileiro de altíssimo nível, com especialização em culinária caseira, gastronomia regional e internacional.  
+    const prompt = `🍽️ Atue como um chef brasileiro de altíssimo nível, com especialização em culinária caseira, gastronomia regional e internacional.  
 Sua missão é criar **um cardápio semanal COMPLETO, EXCLUSIVO e CRIATIVO**, sempre 100% diferente a cada execução, contendo sugestões de café da manhã, almoço e jantar para todos os dias da semana (segunda a domingo).  
 
 🔑 REGRAS ESSENCIAIS:  
@@ -30,6 +30,9 @@ Sua missão é criar **um cardápio semanal COMPLETO, EXCLUSIVO e CRIATIVO**, se
 7. **Estrutura flexível**: varie a ordem, estilo de apresentação e formas de listar os pratos a cada nova chamada.  
 8. **Não repita ingredientes principais** ao longo da semana.  
 9. **Respeite todas as restrições alimentares** informadas. ${restricao}  
+  10. **Nunca deixe nenhum dia da semana sem café, almoço e jantar preenchidos. Domingo deve ser sempre completo.**
+  11. **Revise cuidadosamente a ortografia e gramática antes de finalizar. Evite erros de português, nomes inventados ou palavras sem sentido.**
+  12. **Seja criativo, mas sempre com pratos reais, nomes corretos e descrições claras.**
 
 📌 EXEMPLO DE FORMATAÇÃO (apenas ilustrativo, não repita exatamente):  
 
