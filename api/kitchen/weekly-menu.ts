@@ -58,7 +58,7 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
   let resultado = '';
   if (gemini) {
     try {
-      const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = gemini.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
       const result = await model.generateContent(promptGemini);
       resultado = result.response.text();
       if (!resultado || resultado.trim().length < 10) {
