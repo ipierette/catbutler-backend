@@ -1,15 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { withCors } from '../_lib/cors';
 import Groq from 'groq-sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
+const gemini = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 
 // Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições e ingredientes proibidos
 async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise<string> {
-  if (!groq) throw new Error('GROQ não configurado');
+  if (!gemini && !groq) throw new Error('Nenhum modelo IA configurado');
   let restricao = '';
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
     restricao = `\n\n⚠️ RESTRIÇÃO ABSOLUTA: O usuário NÃO gosta dos seguintes ingredientes e NUNCA pode aparecer nenhum prato, acompanhamento, molho, tempero ou referência que contenha: ${ingredientesProibidos.join(', ')}.  
@@ -50,18 +52,33 @@ TERÇA:
 
 Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuário a compartilhar seu cardápio e divulgar o site **CatButler!** 🐾`;
 
-  const completion = await groq.chat.completions.create({
-    messages: [
-      { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
-      { role: 'user', content: prompt }
-    ],
-    model: 'llama-3.3-70b-versatile',
-    temperature: 1.5,
-    max_tokens: 1200,
-    top_p: 1.0,
-    stream: false
-  });
-  let resultado = completion.choices[0]?.message?.content || '';
+  let resultado = '';
+  if (gemini) {
+    try {
+      const model = gemini.getGenerativeModel({ model: 'gemini-pro' });
+      const result = await model.generateContent(prompt);
+      resultado = result.response.text();
+      if (!resultado || resultado.trim().length < 10) {
+        resultado = 'Não foi possível gerar um cardápio completo com o Gemini gratuito. Tente novamente mais tarde ou reduza o tamanho do prompt.';
+      }
+    } catch (err: any) {
+      resultado = 'Limite do Gemini gratuito atingido ou erro na geração. Tente novamente mais tarde.';
+    }
+  } else if (groq) {
+    // Groq fallback
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
+        { role: 'user', content: prompt }
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 1.5,
+      max_tokens: 1200,
+      top_p: 1.0,
+      stream: false
+    });
+    resultado = completion.choices[0]?.message?.content || '';
+  }
   // Pós-processamento: remove linhas com ingredientes proibidos (caso a IA ignore)
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
     const proibidosRegex = new RegExp(ingredientesProibidos.map(i => i.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
