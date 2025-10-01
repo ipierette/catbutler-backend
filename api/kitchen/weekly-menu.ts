@@ -12,17 +12,49 @@ async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise
   if (!groq) throw new Error('GROQ não configurado');
   let restricao = '';
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
-    restricao = `\n\nATENÇÃO: O usuário NÃO gosta dos seguintes ingredientes e não pode sugerir nenhum prato que contenha: ${ingredientesProibidos.join(', ')}. Exclua absolutamente qualquer prato que leve esses ingredientes, mesmo como tempero, acompanhamento ou parte do nome do prato. Se não tiver certeza, NÃO sugira. NÃO repita pratos nem variações. Se sugerir algum prato proibido, será penalizado.`;
+    restricao = `\n\n⚠️ RESTRIÇÃO ABSOLUTA: O usuário NÃO gosta dos seguintes ingredientes e NUNCA pode aparecer nenhum prato, acompanhamento, molho, tempero ou referência que contenha: ${ingredientesProibidos.join(', ')}.  
+Se houver dúvida sobre a presença de algum ingrediente proibido, NÃO sugira o prato.  
+Jamais repita pratos nem crie variações disfarçadas.  
+Se algum item proibido for sugerido, será considerado erro grave.`;
   }
-  const prompt = `Você é um chef brasileiro especialista em culinária caseira. Crie um cardápio semanal COMPLETAMENTE DIFERENTE a cada chamada, com sugestões de café da manhã, almoço e jantar para cada dia da semana (segunda a domingo). NÃO repita receitas, nomes de pratos, nem estruturas. Use pratos típicos brasileiros, regionais, internacionais, práticos e variados. Responda em formato de tabela ou lista clara, em português. Seja criativo, mas realista. Não inclua ingredientes caros ou difíceis de achar. Exemplo de formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nTERÇA:\n...\n\nIMPORTANTE: Cada vez que este comando for chamado, gere um cardápio TOTALMENTE diferente, mesmo para o mesmo usuário. Varie bastante os tipos de proteína (carne, peixe, frango, ovos, vegetariano, vegano), inclua pratos regionais, internacionais e pelo menos um prato vegano na semana. NÃO repita a estrutura dos dias. Seja ainda mais criativo e varie bastante as sugestões a cada chamada. NÃO repita pratos nem ingredientes principais. ${restricao}\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
+  const prompt = `🍽️ Atue como um chef brasileiro de altíssimo nível, com especialização em culinária caseira, gastronomia regional e internacional.  
+Sua missão é criar **um cardápio semanal COMPLETO, EXCLUSIVO e CRIATIVO**, sempre 100% diferente a cada execução, contendo sugestões de café da manhã, almoço e jantar para todos os dias da semana (segunda a domingo).  
+
+🔑 REGRAS ESSENCIAIS:  
+1. **Zero repetição**: nunca repita nomes de pratos, receitas ou estruturas.  
+2. **Variedade máxima**: use proteínas diferentes (carne, frango, peixe, ovos, frutos do mar, vegetariano, vegano).  
+3. **Inclusão obrigatória**: pelo menos um prato vegano na semana.  
+4. **Mistura cultural**: inclua pratos típicos brasileiros (de várias regiões), internacionais, simples e práticos.  
+5. **Criatividade realista**: crie pratos originais, mas fáceis de preparar, com ingredientes comuns e acessíveis (evite itens caros ou difíceis de encontrar).  
+6. **Apresentação clara**: organize em tabela ou lista bem formatada, em português do Brasil, destacando cada dia.  
+7. **Estrutura flexível**: varie a ordem, estilo de apresentação e formas de listar os pratos a cada nova chamada.  
+8. **Não repita ingredientes principais** ao longo da semana.  
+9. **Respeite todas as restrições alimentares** informadas. ${restricao}  
+
+📌 EXEMPLO DE FORMATAÇÃO (apenas ilustrativo, não repita exatamente):  
+
+SEGUNDA:  
+☕ Café da manhã: …  
+🍲 Almoço: …  
+🌙 Jantar: …  
+
+TERÇA:  
+☕ Café da manhã: …  
+🍲 Almoço: …  
+🌙 Jantar: …  
+
+⚡ Cada execução deste comando deve gerar um cardápio **TOTALMENTE inédito**, com pratos e descrições variadas, surpreendendo sempre o usuário.  
+
+Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuário a compartilhar seu cardápio e divulgar o site **CatButler!** 🐾`;
+
   const completion = await groq.chat.completions.create({
     messages: [
-      { role: 'system', content: 'Você é um chef IA brasileiro.' },
+      { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
       { role: 'user', content: prompt }
     ],
     model: 'llama-3.3-70b-versatile',
-    temperature: 1.2,
-    max_tokens: 700,
+    temperature: 3.0,
+    max_tokens: 900,
     top_p: 1.0,
     stream: false
   });
