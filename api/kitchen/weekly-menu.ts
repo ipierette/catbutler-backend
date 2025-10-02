@@ -56,20 +56,41 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
   const promptGemini = `Você é um chef brasileiro criativo. Crie um cardápio semanal variado, com café da manhã, almoço e jantar para cada dia da semana (segunda a domingo), sem repetir pratos. Use pratos brasileiros e internacionais, ingredientes simples e pelo menos um prato vegano. Não use ingredientes proibidos: ${ingredientesProibidos?.join(', ') || 'nenhum'}. Responda em português, formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o CatButler!`;
 
   let resultado = '';
-  if (gemini) {
-    try {
-      const model = gemini.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: promptGemini }] }],
-        generationConfig: { maxOutputTokens: 800 }
-      });
-      resultado = result.response.text();
-      if (!resultado || resultado.trim().length < 10) {
-        resultado = 'Não foi possível gerar o cardápio completo com o Gemini gratuito.';
-      }
-    } catch (err: any) {
-      resultado = 'Limite do Gemini gratuito atingido ou erro na geração do cardápio.';
-    }
+  if (groq) {
+    // Parte 1: Segunda a Quarta
+    const promptParte1 = `Você é um chef brasileiro criativo. Crie a introdução e o cardápio de SEGUNDA a QUARTA, cada dia com café da manhã, almoço e jantar, sem repetir pratos. Use pratos brasileiros e internacionais, ingredientes simples e pelo menos um prato vegano. Não use ingredientes proibidos: ${ingredientesProibidos?.join(', ') || 'nenhum'}. Responda em português, formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nGere apenas introdução e os dias SEGUNDA, TERÇA e QUARTA. Não gere quinta a domingo nem mensagem final.`;
+    const completion1 = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
+        { role: 'user', content: promptParte1 }
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 1.5,
+      max_tokens: 700,
+      top_p: 1.0,
+      stream: false
+    });
+    const resultado1 = completion1.choices[0]?.message?.content || '';
+
+    // Parte 2: Quinta a Domingo + encerramento
+    // Extrai pratos já sugeridos para evitar duplicatas
+    let pratos1Raw = resultado1.match(/: (.*)/g);
+    let pratos1: string[] = Array.isArray(pratos1Raw) ? pratos1Raw.map(p => p.replace(/^: /, '').trim().toLowerCase()) : [];
+    const avoidList = pratos1.length > 0 ? `Evite sugerir qualquer prato, ingrediente ou estrutura já mencionada anteriormente: ${pratos1.join(', ')}.` : '';
+    const promptParte2 = `Continue o cardápio semanal a partir de QUINTA até DOMINGO, cada dia com café da manhã, almoço e jantar, SEM repetir nenhum prato, estrutura ou ingrediente principal já sugerido nos dias anteriores. ${avoidList}\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o CatButler!\n\nSiga o mesmo formato e regras da primeira parte.`;
+    const completion2 = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
+        { role: 'user', content: promptParte2 }
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 1.5,
+      max_tokens: 700,
+      top_p: 1.0,
+      stream: false
+    });
+    const resultado2 = completion2.choices[0]?.message?.content || '';
+    resultado = (resultado1 + '\n' + resultado2).trim();
   }
   // Pós-processamento: remove linhas com ingredientes proibidos (caso a IA ignore)
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
