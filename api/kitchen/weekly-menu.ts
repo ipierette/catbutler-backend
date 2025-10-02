@@ -65,7 +65,7 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
         { role: 'user', content: promptParte1 }
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 1.5,
+      temperature: 1.7,
       max_tokens: 700,
       top_p: 1.0,
       stream: false
@@ -84,7 +84,7 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
         { role: 'user', content: promptParte2 }
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 1.5,
+      temperature: 1.7,
       max_tokens: 700,
       top_p: 1.0,
       stream: false
