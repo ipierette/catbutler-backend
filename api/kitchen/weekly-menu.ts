@@ -52,14 +52,17 @@ TERÇA:
 
 Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuário a compartilhar seu cardápio e divulgar o site **CatButler!** 🐾`;
 
-  // Prompt único para Gemini: cardápio completo
-  const promptGemini = `🍽️ Atue como um chef brasileiro de altíssimo nível, com especialização em culinária caseira, gastronomia regional e internacional.\nSua missão é criar **um cardápio semanal COMPLETO, EXCLUSIVO e CRIATIVO**, sempre 100% diferente a cada execução, contendo sugestões de café da manhã, almoço e jantar para todos os dias da semana (segunda a domingo).\n\n🔑 REGRAS ESSENCIAIS:\n1. Zero repetição de pratos ou estruturas.\n2. Variedade máxima de proteínas.\n3. Pelo menos um prato vegano.\n4. Misture pratos brasileiros e internacionais.\n5. Pratos reais, ingredientes acessíveis.\n6. Apresente em português do Brasil, bem formatado.\n7. Não repita ingredientes principais.\n8. Respeite todas as restrições alimentares. ${restricao}\n9. Não deixe nenhum dia sem café, almoço e jantar. Domingo deve ser sempre completo.\n10. Revise ortografia e gramática.\n11. Seja criativo, mas realista.\n\nExemplo:\nSEGUNDA:\n☕ Café da manhã: ...\n🍲 Almoço: ...\n🌙 Jantar: ...\n\nGere o cardápio completo de segunda a domingo, com introdução e mensagem final simpática convidando o usuário a compartilhar o cardápio e divulgar o site CatButler!`;
+  // Prompt reduzido para Gemini: cardápio completo
+  const promptGemini = `Você é um chef brasileiro criativo. Crie um cardápio semanal variado, com café da manhã, almoço e jantar para cada dia da semana (segunda a domingo), sem repetir pratos. Use pratos brasileiros e internacionais, ingredientes simples e pelo menos um prato vegano. Não use ingredientes proibidos: ${ingredientesProibidos?.join(', ') || 'nenhum'}. Responda em português, formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o CatButler!`;
 
   let resultado = '';
   if (gemini) {
     try {
-  const model = gemini.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
-      const result = await model.generateContent(promptGemini);
+      const model = gemini.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: promptGemini }] }],
+        generationConfig: { maxOutputTokens: 800 }
+      });
       resultado = result.response.text();
       if (!resultado || resultado.trim().length < 10) {
         resultado = 'Não foi possível gerar o cardápio completo com o Gemini gratuito.';
