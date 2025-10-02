@@ -8,96 +8,245 @@ const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_
 const gemini = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
+// Cache em memória para evitar repetições (em produção, usar Redis ou banco)
+const cardapioHistorico: string[] = [];
+const MAX_HISTORICO = 10; // Mantém últimos 10 cardápios para evitar repetições
 
-// Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições e ingredientes proibidos
+// Banco de dados de variedades culinárias para maior diversidade
+const VARIEDADES_CULINARIAS = {
+  brasileiras: [
+    'Nordestina', 'Mineira', 'Gaúcha', 'Paulista', 'Carioca', 'Baiana', 
+    'Amazônica', 'Capixaba', 'Goiana', 'Pantaneira', 'Catarinense'
+  ],
+  internacionais: [
+    'Italiana', 'Japonesa', 'Chinesa', 'Mexicana', 'Indiana', 'Tailandesa',
+    'Francesa', 'Árabe', 'Peruana', 'Coreana', 'Grega', 'Espanhola',
+    'Portuguesa', 'Alemã', 'Americana', 'Argentina', 'Turca', 'Marroquina'
+  ],
+  estilos: [
+    'Caseira', 'Gourmet', 'Rápida', 'Saudável', 'Comfort Food', 'Street Food',
+    'Vegetariana', 'Vegana', 'Low Carb', 'Fitness', 'Tradicional', 'Moderna'
+  ],
+  tecnicas: [
+    'Grelhado', 'Assado', 'Refogado', 'Cozido', 'Frito', 'Ensopado',
+    'Salteado', 'Marinado', 'Defumado', 'Cru', 'Vapor', 'Braseado'
+  ]
+};
+
+// Função para gerar seed de variedade baseado no timestamp
+function gerarSeedVariedade(): string {
+  const now = new Date();
+  const seed = now.getTime() + Math.random() * 1000;
+  
+  const culinariaBr = VARIEDADES_CULINARIAS.brasileiras[Math.floor(seed % VARIEDADES_CULINARIAS.brasileiras.length)];
+  const culinariaInt = VARIEDADES_CULINARIAS.internacionais[Math.floor((seed * 2) % VARIEDADES_CULINARIAS.internacionais.length)];
+  const estilo = VARIEDADES_CULINARIAS.estilos[Math.floor((seed * 3) % VARIEDADES_CULINARIAS.estilos.length)];
+  const tecnica = VARIEDADES_CULINARIAS.tecnicas[Math.floor((seed * 4) % VARIEDADES_CULINARIAS.tecnicas.length)];
+  
+  return `Foque em: ${culinariaBr}, ${culinariaInt}, estilo ${estilo}, técnica ${tecnica}`;
+}
+
+
+// Função para filtrar pratos inteiros e ingredientes
+function filtrarPratosEIngredientes(texto: string, itensProibidos: string[]): string {
+  if (!itensProibidos || itensProibidos.length === 0) return texto;
+  
+  const linhas = texto.split('\n');
+  const linhasFiltradas = linhas.filter(linha => {
+    const linhaNormalizada = linha.toLowerCase().trim();
+    
+    // Pula linhas vazias, títulos de dias e emojis
+    if (!linhaNormalizada || 
+        /^(segunda|terça|quarta|quinta|sexta|sábado|domingo)/i.test(linhaNormalizada) ||
+        /^[\u2615\uD83C\uDF72\uD83C\uDF19\uD83E\uDD50\uD83C\uDF7D\uD83E\uDD57]/u.test(linhaNormalizada)) {
+      return true;
+    }
+    
+    // Verifica se algum item proibido está presente na linha
+    return !itensProibidos.some(item => {
+      const itemNormalizado = item.toLowerCase().trim();
+      
+      // Verifica presença exata do item (ingrediente ou prato)
+      return linhaNormalizada.includes(itemNormalizado) ||
+             // Verifica variações com acentos e plural
+             linhaNormalizada.includes(itemNormalizado.replace(/a$/, 'as')) ||
+             linhaNormalizada.includes(itemNormalizado.replace(/o$/, 'os')) ||
+             linhaNormalizada.includes(itemNormalizado.replace(/ã$/, 'ães'));
+    });
+  });
+  
+  return linhasFiltradas.join('\n');
+}
+
+// Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições e ingredientes/pratos proibidos
 async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise<string> {
   if (!gemini && !groq) throw new Error('Nenhum modelo IA configurado');
+  
+  // Gera seed de variedade para este cardápio
+  const seedVariedade = gerarSeedVariedade();
+  
+  // Prepara histórico de pratos para evitar repetições
+  const pratosAnteriores = cardapioHistorico.length > 0 
+    ? `\n\n🚫 EVITE ABSOLUTAMENTE estes pratos já sugeridos recentemente: ${cardapioHistorico.join(', ')}`
+    : '';
+  
   let restricao = '';
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
-    restricao = `\n\n⚠️ RESTRIÇÃO ABSOLUTA: O usuário NÃO gosta dos seguintes ingredientes e NUNCA pode aparecer nenhum prato, acompanhamento, molho, tempero ou referência que contenha: ${ingredientesProibidos.join(', ')}.  
-Se houver dúvida sobre a presença de algum ingrediente proibido, NÃO sugira o prato.  
-Jamais repita pratos nem crie variações disfarçadas.  
-Se algum item proibido for sugerido, será considerado erro grave.`;
+    restricao = `\n\n⚠️ RESTRIÇÃO ABSOLUTA: O usuário NÃO quer os seguintes ingredientes OU pratos inteiros: ${ingredientesProibidos.join(', ')}.
+    
+🔍 REGRAS DE EXCLUSÃO:
+- Se for um INGREDIENTE (ex: "peixe", "ovo"): NÃO use em nenhum prato, molho, acompanhamento ou tempero
+- Se for um PRATO INTEIRO (ex: "lasanha", "feijoada"): NÃO sugira esse prato nem variações dele
+- Se houver dúvida, NÃO sugira o item
+- Jamais crie variações disfarçadas dos itens proibidos
+- Considere sinônimos e variações (ex: se "peixe" está proibido, não use salmão, bacalhau, etc.)`;
   }
     const prompt = `🍽️ Atue como um chef brasileiro de altíssimo nível, com especialização em culinária caseira, gastronomia regional e internacional.  
-Sua missão é criar **um cardápio semanal COMPLETO, EXCLUSIVO e CRIATIVO**, sempre 100% diferente a cada execução, contendo sugestões de café da manhã, almoço e jantar para todos os dias da semana (segunda a domingo).  
+Sua missão é criar **um cardápio semanal COMPLETO, EXCLUSIVO e ULTRA-CRIATIVO**, sempre 100% diferente a cada execução, contendo sugestões de café da manhã, almoço e jantar para todos os dias da semana (segunda a domingo).  
 
-🔑 REGRAS ESSENCIAIS:  
-1. **Zero repetição**: nunca repita nomes de pratos, receitas ou estruturas.  
-2. **Variedade máxima**: use proteínas diferentes (carne, frango, peixe, ovos, frutos do mar, vegetariano, vegano).  
-3. **Inclusão obrigatória**: pelo menos um prato vegano na semana.  
-4. **Mistura cultural**: inclua pratos típicos brasileiros (de várias regiões), internacionais, simples e práticos.  
-5. **Criatividade realista**: crie pratos originais, mas fáceis de preparar, com ingredientes comuns e acessíveis (evite itens caros ou difíceis de encontrar).  
-6. **Apresentação clara**: organize em tabela ou lista bem formatada, em português do Brasil, destacando cada dia.  
-7. **Estrutura flexível**: varie a ordem, estilo de apresentação e formas de listar os pratos a cada nova chamada.  
-8. **Não repita ingredientes principais** ao longo da semana.  
-9. **Respeite todas as restrições alimentares** informadas. ${restricao}  
-  10. **Nunca deixe nenhum dia da semana sem café, almoço e jantar preenchidos. Domingo deve ser sempre completo.**
-  11. **Revise cuidadosamente a ortografia e gramática antes de finalizar. Evite erros de português, nomes inventados ou palavras sem sentido.**
-  12. **Seja criativo, mas sempre com pratos reais, nomes corretos e descrições claras.**
+🎯 DIRECIONAMENTO DE VARIEDADE: ${seedVariedade}
 
-📌 EXEMPLO DE FORMATAÇÃO (apenas ilustrativo, não repita exatamente):  
+🔑 REGRAS ESSENCIAIS APRIMORADAS:  
+1. **Zero repetição ABSOLUTA**: nunca repita nomes de pratos, receitas, estruturas ou ingredientes principais
+2. **Variedade EXTREMA**: use proteínas diferentes (carne bovina, suína, frango, peixe, frutos do mar, ovos, leguminosas, vegetariano, vegano)
+3. **Diversidade cultural OBRIGATÓRIA**: 
+   - Pelo menos 3 culinárias brasileiras diferentes (Nordestina, Mineira, Gaúcha, etc.)
+   - Pelo menos 4 culinárias internacionais (Italiana, Japonesa, Mexicana, Indiana, etc.)
+   - Pelo menos 1 prato vegano e 1 vegetariano
+4. **Técnicas culinárias variadas**: grelhado, assado, refogado, cozido, frito, ensopado, salteado, marinado
+5. **Criatividade INOVADORA**: crie combinações únicas mas realistas, com ingredientes acessíveis
+6. **Apresentação DINÂMICA**: varie formato, emojis e estrutura a cada execução
+7. **Ingredientes ÚNICOS**: cada dia deve ter ingredientes principais diferentes
+8. **Texturas e sabores CONTRASTANTES**: doce/salgado, crocante/cremoso, quente/frio
+9. **Sazonalidade**: considere ingredientes da estação atual
+10. **Respeite RIGOROSAMENTE** todas as restrições: ${restricao}${pratosAnteriores}
+11. **Completude OBRIGATÓRIA**: todos os dias com café, almoço e jantar
+12. **Qualidade linguística**: português perfeito, nomes reais, descrições atrativas
 
-SEGUNDA:  
-☕ Café da manhã: …  
-🍲 Almoço: …  
-🌙 Jantar: …  
+🌟 INOVAÇÕES OBRIGATÓRIAS:
+- Use especiarias e temperos diferentes a cada prato
+- Combine técnicas culinárias inusitadas
+- Crie fusões gastronômicas criativas
+- Varie tipos de carboidratos (arroz, massas, batatas, quinoa, etc.)
+- Inclua pratos de diferentes complexidades (simples, médios, elaborados)
 
-TERÇA:  
-☕ Café da manhã: …  
-🍲 Almoço: …  
-🌙 Jantar: …  
+📌 FORMATO DINÂMICO (varie a estrutura):  
 
-⚡ Cada execução deste comando deve gerar um cardápio **TOTALMENTE inédito**, com pratos e descrições variadas, surpreendendo sempre o usuário.  
+SEGUNDA-FEIRA:  
+☕ Café da manhã: [Prato único e criativo]
+🍲 Almoço: [Combinação inovadora]
+🌙 Jantar: [Receita surpreendente]
+
+[Continue com criatividade máxima para todos os dias]
+
+⚡ Este cardápio deve ser **COMPLETAMENTE INÉDITO**, com zero similaridade com cardápios anteriores!
 
 Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuário a compartilhar seu cardápio e divulgar o site **CatButler!** 🐾`;
 
-  // Prompt reduzido para Gemini: cardápio completo
-  const promptGemini = `Você é um chef brasileiro criativo. Crie um cardápio semanal variado, com café da manhã, almoço e jantar para cada dia da semana (segunda a domingo), sem repetir pratos. Use pratos brasileiros e internacionais, ingredientes simples e pelo menos um prato vegano. Não use ingredientes proibidos: ${ingredientesProibidos?.join(', ') || 'nenhum'}. Responda em português, formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o CatButler!`;
+  // Prompt para Gemini será construído dinamicamente se necessário
 
   let resultado = '';
+  
   if (groq) {
-    // Parte 1: Segunda a Quarta
-    const promptParte1 = `Você é um chef brasileiro criativo. Crie a introdução e o cardápio de SEGUNDA a QUARTA, cada dia com café da manhã, almoço e jantar, sem repetir pratos. Use pratos brasileiros e internacionais, ingredientes simples e pelo menos um prato vegano. Não use ingredientes proibidos: ${ingredientesProibidos?.join(', ') || 'nenhum'}. Responda em português, formato:\n\nSEGUNDA:\nCafé: ...\nAlmoço: ...\nJantar: ...\n\nGere apenas introdução e os dias SEGUNDA, TERÇA e QUARTA. Não gere quinta a domingo nem mensagem final.`;
+    // Parte 1: Segunda a Quarta com sistema aprimorado
+    const promptParte1 = `${prompt.substring(0, prompt.length / 2)}
+    
+🎯 FOCO DESTA PARTE: Gere APENAS SEGUNDA, TERÇA e QUARTA-FEIRA com máxima criatividade.
+Não gere quinta a domingo nem mensagem final. Use o direcionamento: ${seedVariedade}`;
+
     const completion1 = await groq.chat.completions.create({
       messages: [
-        { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
+        { role: 'system', content: 'Você é um chef IA brasileiro ultra-criativo, inovador e especialista em culinária mundial. Sua especialidade é criar cardápios únicos e surpreendentes.' },
         { role: 'user', content: promptParte1 }
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 1.7,
-      max_tokens: 700,
-      top_p: 1.0,
+      temperature: 1.9, // Aumentado para mais criatividade
+      max_tokens: 800,
+      top_p: 0.95,
       stream: false
     });
     const resultado1 = completion1.choices[0]?.message?.content || '';
 
     // Parte 2: Quinta a Domingo + encerramento
-    // Extrai pratos já sugeridos para evitar duplicatas
-    let pratos1Raw = resultado1.match(/: (.*)/g);
-    let pratos1: string[] = Array.isArray(pratos1Raw) ? pratos1Raw.map(p => p.replace(/^: /, '').trim().toLowerCase()) : [];
-    const avoidList = pratos1.length > 0 ? `Evite sugerir qualquer prato, ingrediente ou estrutura já mencionada anteriormente: ${pratos1.join(', ')}.` : '';
-    const promptParte2 = `Continue o cardápio semanal a partir de QUINTA até DOMINGO, cada dia com café da manhã, almoço e jantar, SEM repetir nenhum prato, estrutura ou ingrediente principal já sugerido nos dias anteriores. ${avoidList}\nFinalize com uma mensagem simpática convidando o usuário a compartilhar o cardápio e divulgar o CatButler!\n\nSiga o mesmo formato e regras da primeira parte.`;
+    // Extrai pratos já sugeridos para evitar duplicatas (sistema aprimorado)
+    const pratosExtraidos = extrairPratosDoTexto(resultado1);
+    const avoidList = pratosExtraidos.length > 0 
+      ? `\n🚫 PRATOS JÁ USADOS (NÃO REPITA): ${pratosExtraidos.join(', ')}`
+      : '';
+    
+    const promptParte2 = `Continue o cardápio semanal de QUINTA a DOMINGO com MÁXIMA CRIATIVIDADE.
+    
+${seedVariedade}
+${avoidList}
+${restricao}
+${pratosAnteriores}
+
+🔑 REGRAS PARA ESTA PARTE:
+- QUINTA, SEXTA, SÁBADO e DOMINGO completos
+- Zero repetição dos pratos da primeira parte
+- Máxima diversidade cultural e técnica
+- Finalize com mensagem calorosa sobre CatButler
+
+Use técnicas e ingredientes COMPLETAMENTE diferentes da primeira parte!`;
+
     const completion2 = await groq.chat.completions.create({
       messages: [
-        { role: 'system', content: 'Você é um chef IA brasileiro criativo, inovador e especialista em culinária variada.' },
+        { role: 'system', content: 'Você é um chef IA brasileiro ultra-criativo, especialista em evitar repetições e criar pratos únicos.' },
         { role: 'user', content: promptParte2 }
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 1.7,
-      max_tokens: 700,
-      top_p: 1.0,
+      temperature: 1.9,
+      max_tokens: 800,
+      top_p: 0.95,
       stream: false
     });
     const resultado2 = completion2.choices[0]?.message?.content || '';
     resultado = (resultado1 + '\n' + resultado2).trim();
+    
+  } else if (gemini) {
+    // Fallback para Gemini com prompt aprimorado
+    const model = gemini.getGenerativeModel({ model: 'gemini-pro' });
+    const response = await model.generateContent(`${prompt}\n\n${seedVariedade}`);
+    resultado = response.response.text() || '';
   }
-  // Pós-processamento: remove linhas com ingredientes proibidos (caso a IA ignore)
+
+  // Pós-processamento aprimorado: filtra ingredientes E pratos inteiros
   if (ingredientesProibidos && ingredientesProibidos.length > 0) {
-    const proibidosRegex = new RegExp(ingredientesProibidos.map(i => i.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
-    resultado = resultado.split('\n').filter(linha => !proibidosRegex.test(linha)).join('\n');
+    resultado = filtrarPratosEIngredientes(resultado, ingredientesProibidos);
   }
+
+  // Adiciona ao histórico para evitar repetições futuras
+  const novosProtos = extrairPratosDoTexto(resultado);
+  cardapioHistorico.push(...novosProtos.slice(0, 5)); // Adiciona até 5 pratos principais
+  
+  // Mantém apenas os últimos cardápios no histórico
+  if (cardapioHistorico.length > MAX_HISTORICO * 5) {
+    cardapioHistorico.splice(0, cardapioHistorico.length - MAX_HISTORICO * 5);
+  }
+
   return resultado;
+}
+
+// Função auxiliar para extrair pratos do texto gerado
+function extrairPratosDoTexto(texto: string): string[] {
+  const pratos: string[] = [];
+  const linhas = texto.split('\n');
+  
+  linhas.forEach(linha => {
+    // Procura por linhas que contenham pratos (após os dois pontos)
+    const regex = /(?:☕|🍲|🌙|Café|Almoço|Jantar).*?:\s*(.+)/i;
+    const match = regex.exec(linha);
+    if (match?.[1]) {
+      const prato = match[1].trim().toLowerCase();
+      // Remove descrições extras e pega apenas o nome do prato
+      const nomeSimples = prato.split(/[,\-()]/)[0].trim();
+      if (nomeSimples.length > 3) {
+        pratos.push(nomeSimples);
+      }
+    }
+  });
+  
+  return [...new Set(pratos)]; // Remove duplicatas
 }
 
 
