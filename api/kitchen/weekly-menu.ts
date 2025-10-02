@@ -577,51 +577,172 @@ async function buscarPratosRecentesUsuario(userId: string, limite: number = 10):
   }
 }
 
+// Função para verificar se usuário pode gerar cardápio esta semana
+async function podeGerarCardapioSemana(userId: string): Promise<{canGenerate: boolean, existingMenu?: any, nextAvailable?: string}> {
+  try {
+    const { data, error } = await supabase
+      .rpc('tem_cardapio_semana_atual', { p_user_id: userId });
+
+    if (error) throw error;
+
+    if (data) {
+      // Já tem cardápio desta semana, buscar dados
+      const { data: existing, error: existingError } = await supabase
+        .rpc('get_cardapio_semana_atual', { p_user_id: userId });
+
+      if (existingError) throw existingError;
+
+      const { data: nextDate, error: nextError } = await supabase
+        .rpc('proxima_geracao_disponivel', { p_user_id: userId });
+
+      return {
+        canGenerate: false,
+        existingMenu: existing[0] || null,
+        nextAvailable: nextDate || null
+      };
+    }
+
+    return { canGenerate: true };
+  } catch (error) {
+    console.error('[WEEKLY CHECK ERROR]', error);
+    return { canGenerate: true }; // Em caso de erro, permitir geração
+  }
+}
+
+// Função para salvar/atualizar cardápio semanal
+async function salvarCardapioSemanal(userId: string, cardapioData: any, ingredientesProibidos?: string[], isEdit: boolean = false) {
+  try {
+    const { data, error } = await supabase
+      .rpc('upsert_cardapio_semanal', {
+        p_user_id: userId,
+        p_cardapio: cardapioData.cardapio,
+        p_pratos_principais: cardapioData.estatisticas?.detalhes?.ingredientesUnicos || [],
+        p_ingredientes_excluidos: ingredientesProibidos || [],
+        p_seed_variedade: cardapioData.seedVariedade || '',
+        p_estatisticas: cardapioData.estatisticas || {},
+        p_culinarias_brasileiras: cardapioData.estatisticas?.detalhes?.culinariasBrasileiras || [],
+        p_culinarias_internacionais: cardapioData.estatisticas?.detalhes?.culinariasInternacionais || [],
+        p_tecnicas_culinarias: cardapioData.estatisticas?.detalhes?.tecnicas || [],
+        p_editado_manualmente: isEdit
+      });
+
+    if (error) throw error;
+
+    console.log(`✅ Cardápio semanal ${data[0].is_new ? 'criado' : 'atualizado'} - Versão ${data[0].versao}`);
+    return { success: true, data: data[0] };
+  } catch (error) {
+    console.error('[WEEKLY SAVE ERROR]', error);
+    return { success: false, error: (error instanceof Error ? error.message : String(error)) };
+  }
+}
+
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
-  if (req.method !== 'POST') {
+  
+  // Suportar GET para verificar cardápio atual e POST para gerar/editar
+  if (req.method !== 'POST' && req.method !== 'GET') {
     res.status(405).json({ error: 'Método não permitido' });
     return;
   }
+
   try {
-    // Permite receber ingredientesProibidos e userId no body (JSON)
+    // Extrair dados do request
     let ingredientesProibidos: string[] | undefined = undefined;
     let userId: string | undefined = undefined;
-    
-    if (req.body && typeof req.body === 'object') {
+    let isEdit: boolean = false;
+    let cardapioEditado: string | undefined = undefined;
+
+    if (req.method === 'POST' && req.body && typeof req.body === 'object') {
       if (Array.isArray(req.body.ingredientesProibidos)) {
         ingredientesProibidos = req.body.ingredientesProibidos.map((i: any) => String(i)).filter(Boolean);
       }
       if (req.body.userId && typeof req.body.userId === 'string') {
         userId = req.body.userId;
       }
-    }
-
-    // Se tiver userId, buscar pratos recentes do usuário para evitar repetições
-    if (userId) {
-      const pratosRecentes = await buscarPratosRecentesUsuario(userId, 15);
-      if (pratosRecentes.length > 0) {
-        // Adicionar pratos recentes ao histórico global para esta requisição
-        cardapioHistorico.push(...pratosRecentes);
+      if (req.body.isEdit === true) {
+        isEdit = true;
+      }
+      if (req.body.cardapioEditado && typeof req.body.cardapioEditado === 'string') {
+        cardapioEditado = req.body.cardapioEditado;
       }
     }
 
+    // GET: Verificar cardápio atual da semana
+    if (req.method === 'GET') {
+      const userIdQuery = req.query.userId as string;
+      if (!userIdQuery) {
+        res.status(400).json({ error: 'userId é obrigatório' });
+        return;
+      }
+
+      const weeklyCheck = await podeGerarCardapioSemana(userIdQuery);
+      res.status(200).json({
+        success: true,
+        canGenerate: weeklyCheck.canGenerate,
+        existingMenu: weeklyCheck.existingMenu,
+        nextAvailable: weeklyCheck.nextAvailable
+      });
+      return;
+    }
+
+    // POST: Gerar novo cardápio ou salvar edição
+    if (!userId) {
+      res.status(400).json({ error: 'userId é obrigatório' });
+      return;
+    }
+
+    if (isEdit && cardapioEditado) {
+      // Salvar edição manual
+      const saveResult = await salvarCardapioSemanal(userId, 
+        { cardapio: cardapioEditado, estatisticas: {} }, 
+        ingredientesProibidos, 
+        true
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Cardápio editado salvo com sucesso',
+        version: saveResult.data?.versao || 1
+      });
+      return;
+    }
+
+    // Verificar se pode gerar novo cardápio
+    const weeklyCheck = await podeGerarCardapioSemana(userId);
+    if (!weeklyCheck.canGenerate) {
+      res.status(429).json({
+        error: 'Você já tem um cardápio para esta semana',
+        existingMenu: weeklyCheck.existingMenu,
+        nextAvailable: weeklyCheck.nextAvailable,
+        message: 'Você pode editar o cardápio atual ou aguardar a próxima semana'
+      });
+      return;
+    }
+
+    // Buscar pratos recentes do usuário para evitar repetições
+    const pratosRecentes = await buscarPratosRecentesUsuario(userId, 15);
+    if (pratosRecentes.length > 0) {
+      cardapioHistorico.push(...pratosRecentes);
+    }
+
+    // Gerar novo cardápio
     const resultado = await gerarCardapioSemanalIA(ingredientesProibidos);
     
-    // Salvar no histórico do Supabase se tiver userId
-    if (userId) {
-      await salvarCardapioHistorico(userId, resultado, ingredientesProibidos);
-    }
+    // Salvar no sistema semanal
+    const saveResult = await salvarCardapioSemanal(userId, resultado, ingredientesProibidos, false);
     
     res.status(200).json({ 
       success: true, 
       cardapio: resultado.cardapio,
-      estatisticas: resultado.estatisticas
+      estatisticas: resultado.estatisticas,
+      version: saveResult.data?.versao || 1,
+      isNew: saveResult.data?.is_new || true
     });
     return;
+    
   } catch (error) {
     console.error('[WEEKLY MENU ERROR]', error);
     res.status(500).json({ success: false, error: (error instanceof Error ? error.message : String(error)) });
