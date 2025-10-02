@@ -148,21 +148,47 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
   let resultado = '';
   
   if (groq) {
-    // Parte 1: Segunda a Quarta com sistema aprimorado
-    const promptParte1 = `${prompt.substring(0, prompt.length / 2)}
-    
-🎯 FOCO DESTA PARTE: Gere APENAS SEGUNDA, TERÇA e QUARTA-FEIRA com máxima criatividade.
-Não gere quinta a domingo nem mensagem final. Use o direcionamento: ${seedVariedade}`;
+    // Parte 1: Segunda a Quarta com controle de qualidade
+    const promptParte1 = `🍽️ Você é um chef brasileiro experiente e criativo. Crie um cardápio para SEGUNDA, TERÇA e QUARTA-FEIRA.
+
+🎯 DIRECIONAMENTO: ${seedVariedade}
+
+🔑 REGRAS ESSENCIAIS:
+1. **Português perfeito**: Use apenas nomes reais de pratos, sem inventar palavras
+2. **Pratos autênticos**: Cada prato deve existir e ser preparável
+3. **Variedade cultural**: Use 3 culinárias diferentes (brasileira + 2 internacionais)
+4. **Zero repetição**: Ingredientes principais diferentes em cada refeição
+5. **Formato limpo**: Use estrutura clara e organizada
+6. **Restrições**: ${restricao || 'Nenhuma restrição específica'}
+7. **Evitar**: ${pratosAnteriores || 'Primeira geração'}
+
+📋 FORMATO OBRIGATÓRIO:
+**SEGUNDA-FEIRA:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição] 
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+**TERÇA-FEIRA:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição]
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+**QUARTA-FEIRA:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição]
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+⚠️ IMPORTANTE: Gere APENAS os 3 primeiros dias. NÃO gere quinta a domingo nem mensagem final.`;
 
     const completion1 = await groq.chat.completions.create({
       messages: [
-        { role: 'system', content: 'Você é um chef IA brasileiro ultra-criativo, inovador e especialista em culinária mundial. Sua especialidade é criar cardápios únicos e surpreendentes.' },
+        { role: 'system', content: 'Você é um chef brasileiro profissional com expertise em culinária nacional e internacional. Priorize qualidade, autenticidade e clareza na comunicação.' },
         { role: 'user', content: promptParte1 }
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 1.9, // Aumentado para mais criatividade
-      max_tokens: 800,
-      top_p: 0.95,
+      temperature: 1.8, // Reduzido para melhor qualidade
+      max_tokens: 1000,
+      top_p: 0.9,
       stream: false
     });
     const resultado1 = completion1.choices[0]?.message?.content || '';
@@ -174,34 +200,57 @@ Não gere quinta a domingo nem mensagem final. Use o direcionamento: ${seedVarie
       ? `\n🚫 PRATOS JÁ USADOS (NÃO REPITA): ${pratosExtraidos.join(', ')}`
       : '';
     
-    const promptParte2 = `Continue o cardápio semanal de QUINTA a DOMINGO com MÁXIMA CRIATIVIDADE.
-    
-${seedVariedade}
-${avoidList}
-${restricao}
-${pratosAnteriores}
+    const promptParte2 = `🍽️ Continue o cardápio semanal para QUINTA, SEXTA, SÁBADO e DOMINGO.
 
-🔑 REGRAS PARA ESTA PARTE:
-- QUINTA, SEXTA, SÁBADO e DOMINGO completos
-- Zero repetição dos pratos da primeira parte
-- Máxima diversidade cultural e técnica
-- Finalize com mensagem calorosa sobre CatButler
+🎯 NOVO DIRECIONAMENTO: ${gerarSeedVariedade()} (diferente da primeira parte)
 
-Use técnicas e ingredientes COMPLETAMENTE diferentes da primeira parte!`;
+🔑 REGRAS PARA CONTINUAÇÃO:
+1. **Português impecável**: Nomes corretos, sem erros ou invenções
+2. **Pratos reais**: Apenas receitas que existem e são conhecidas
+3. **Diversidade máxima**: Use culinárias DIFERENTES da primeira parte
+4. **Zero repetição**: ${avoidList}
+5. **Restrições**: ${restricao || 'Nenhuma restrição específica'}
+6. **Ingredientes únicos**: Não repita proteínas ou carboidratos principais
+7. **Técnicas variadas**: Use métodos de preparo diferentes
+
+📋 FORMATO OBRIGATÓRIO:
+**QUINTA-FEIRA:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição]
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+**SEXTA-FEIRA:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição]
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+**SÁBADO:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição]
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+**DOMINGO:**
+☕ Café da manhã: [Nome do prato] - [Breve descrição]
+🍲 Almoço: [Nome do prato] - [Breve descrição]
+🌙 Jantar: [Nome do prato] - [Breve descrição]
+
+🐾 Finalize com: "Bom apetite! Compartilhe seu cardápio e divulgue o CatButler! 🐾"`;
 
     const completion2 = await groq.chat.completions.create({
       messages: [
-        { role: 'system', content: 'Você é um chef IA brasileiro ultra-criativo, especialista em evitar repetições e criar pratos únicos.' },
+        { role: 'system', content: 'Você é um chef brasileiro experiente, especialista em evitar repetições e manter alta qualidade linguística. Foque em pratos autênticos e descrições claras.' },
         { role: 'user', content: promptParte2 }
       ],
       model: 'llama-3.3-70b-versatile',
-      temperature: 1.9,
-      max_tokens: 800,
-      top_p: 0.95,
+      temperature: 1.8, // Mesma temperature para consistência
+      max_tokens: 1200,
+      top_p: 0.9,
       stream: false
     });
     const resultado2 = completion2.choices[0]?.message?.content || '';
-    resultado = (resultado1 + '\n' + resultado2).trim();
+    
+    // Combina e valida os resultados
+    resultado = combinarEValidarResultados(resultado1, resultado2);
     
   } else if (gemini) {
     // Fallback para Gemini com prompt aprimorado
@@ -247,6 +296,40 @@ function extrairPratosDoTexto(texto: string): string[] {
   });
   
   return [...new Set(pratos)]; // Remove duplicatas
+}
+
+// Função para validar e combinar resultados das duas partes
+function combinarEValidarResultados(parte1: string, parte2: string): string {
+  // Remove linhas problemáticas (com caracteres estranhos, repetições excessivas, etc.)
+  const limparTexto = (texto: string): string => {
+    return texto
+      .split('\n')
+      .filter(linha => {
+        const linhaNormalizada = linha.trim().toLowerCase();
+        
+        // Remove linhas vazias ou muito curtas
+        if (linhaNormalizada.length < 3) return false;
+        
+        // Remove linhas com muitos caracteres repetidos (ex: "e e e e e")
+        if (/(.)\1{4,}/.test(linhaNormalizada)) return false;
+        
+        // Remove linhas com muitas aspas ou underscores
+        if ((linha.match(/"/g) || []).length > 4) return false;
+        if ((linha.match(/_/g) || []).length > 3) return false;
+        
+        // Remove linhas que parecem corrompidas
+        if (/["_]{3,}/.test(linha)) return false;
+        
+        return true;
+      })
+      .join('\n');
+  };
+  
+  const parte1Limpa = limparTexto(parte1);
+  const parte2Limpa = limparTexto(parte2);
+  
+  // Combina as partes com separação clara
+  return `${parte1Limpa}\n\n${parte2Limpa}`.trim();
 }
 
 
