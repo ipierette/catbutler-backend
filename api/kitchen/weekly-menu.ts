@@ -47,7 +47,34 @@ function gerarSeedVariedade(): string {
 }
 
 
-// Função para filtrar pratos inteiros e ingredientes
+// Banco de dados de ingredientes e suas preparações comuns
+const INGREDIENTES_PREPARACOES: Record<string, string[]> = {
+  'ovo': [
+    // Pratos que usam ovos
+    'bolo', 'torta', 'pudim', 'quindim', 'brigadeiro', 'omelete', 'ovos mexidos',
+    'ovos fritos', 'ovos cozidos', 'maionese', 'massa de pastel', 'pão de ló',
+    'mousse', 'suflê', 'carbonara', 'caesar', 'nhoque', 'massa fresca',
+    'panqueca', 'crepe', 'waffle', 'french toast', 'rabanada', 'sonho',
+    'coxinha', 'empada', 'quiche', 'fritada', 'shakshuka'
+  ],
+  'peixe': [
+    // Tipos de peixe e preparações
+    'salmão', 'bacalhau', 'tilápia', 'sardinha', 'atum', 'linguado', 'robalo',
+    'moqueca', 'peixada', 'escabeche', 'sushi', 'sashimi', 'ceviche',
+    'fish and chips', 'paella', 'risotto de camarão'
+  ],
+  'leite': [
+    // Preparações com leite
+    'pudim', 'flan', 'doce de leite', 'brigadeiro', 'beijinho', 'mousse',
+    'vitamina', 'smoothie', 'mingau', 'creme', 'molho branco', 'bechamel',
+    'cappuccino', 'café com leite', 'chocolate quente', 'milk shake'
+  ],
+  'carne de porco': [
+    'bacon', 'linguiça', 'presunto', 'lombo', 'costela', 'pernil', 'torresmo'
+  ]
+};
+
+// Função para filtrar pratos inteiros e ingredientes (versão aprimorada)
 function filtrarPratosEIngredientes(texto: string, itensProibidos: string[]): string {
   if (!itensProibidos || itensProibidos.length === 0) return texto;
   
@@ -66,12 +93,19 @@ function filtrarPratosEIngredientes(texto: string, itensProibidos: string[]): st
     return !itensProibidos.some(item => {
       const itemNormalizado = item.toLowerCase().trim();
       
-      // Verifica presença exata do item (ingrediente ou prato)
-      return linhaNormalizada.includes(itemNormalizado) ||
-             // Verifica variações com acentos e plural
-             linhaNormalizada.includes(itemNormalizado.replace(/a$/, 'as')) ||
-             linhaNormalizada.includes(itemNormalizado.replace(/o$/, 'os')) ||
-             linhaNormalizada.includes(itemNormalizado.replace(/ã$/, 'ães'));
+      // Verifica presença direta do item
+      if (linhaNormalizada.includes(itemNormalizado)) return true;
+      
+      // Verifica variações com acentos e plural
+      if (linhaNormalizada.includes(itemNormalizado.replace(/a$/, 'as')) ||
+          linhaNormalizada.includes(itemNormalizado.replace(/o$/, 'os')) ||
+          linhaNormalizada.includes(itemNormalizado.replace(/ã$/, 'ães'))) {
+        return true;
+      }
+      
+      // Verifica preparações que usam o ingrediente proibido
+      const preparacoes = INGREDIENTES_PREPARACOES[itemNormalizado] || [];
+      return preparacoes.some((preparacao: string) => linhaNormalizada.includes(preparacao));
     });
   });
   
@@ -79,7 +113,7 @@ function filtrarPratosEIngredientes(texto: string, itensProibidos: string[]): st
 }
 
 // Gera um cardápio semanal com café, almoço e jantar para cada dia, evitando repetições e ingredientes/pratos proibidos
-async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise<string> {
+async function gerarCardapioSemanalIA(ingredientesProibidos?: string[]): Promise<{cardapio: string, estatisticas: any}> {
   if (!gemini && !groq) throw new Error('Nenhum modelo IA configurado');
   
   // Gera seed de variedade para este cardápio
@@ -273,7 +307,10 @@ Finalize com uma mensagem calorosa, simpática e envolvente, convidando o usuár
     cardapioHistorico.splice(0, cardapioHistorico.length - MAX_HISTORICO * 5);
   }
 
-  return resultado;
+  // Gera estatísticas dinâmicas do cardápio
+  const estatisticas = analisarCardapio(resultado, ingredientesProibidos);
+  
+  return { cardapio: resultado, estatisticas };
 }
 
 // Função auxiliar para extrair pratos do texto gerado
@@ -296,6 +333,160 @@ function extrairPratosDoTexto(texto: string): string[] {
   });
   
   return [...new Set(pratos)]; // Remove duplicatas
+}
+
+// Função para analisar o cardápio e gerar estatísticas dinâmicas
+function analisarCardapio(cardapio: string, ingredientesProibidos?: string[]) {
+  const linhas = cardapio.split('\n');
+  
+  // Conta dias da semana
+  const diasEncontrados = new Set();
+  const diasSemana = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
+  
+  // Conta refeições
+  let totalRefeicoes = 0;
+  
+  // Analisa variedade cultural
+  const culinariasBrasileiras = new Set();
+  const culinariasInternacionais = new Set();
+  
+  // Analisa técnicas culinárias
+  const tecnicasEncontradas = new Set();
+  
+  // Analisa ingredientes únicos
+  const ingredientesUnicos = new Set();
+  
+  linhas.forEach(linha => {
+    const linhaNormalizada = linha.toLowerCase().trim();
+    
+    // Conta dias
+    diasSemana.forEach(dia => {
+      if (linhaNormalizada.includes(dia)) {
+        diasEncontrados.add(dia);
+      }
+    });
+    
+    // Conta refeições (linhas com emojis de refeição)
+    if (/(?:☕|🍲|🌙|café|almoço|jantar)/.test(linhaNormalizada)) {
+      totalRefeicoes++;
+    }
+    
+    // Analisa culinárias (baseado em palavras-chave)
+    const culinariasDetectadas = detectarCulinarias(linha);
+    culinariasDetectadas.brasileiras.forEach(c => culinariasBrasileiras.add(c));
+    culinariasDetectadas.internacionais.forEach(c => culinariasInternacionais.add(c));
+    
+    // Analisa técnicas
+    const tecnicas = detectarTecnicas(linha);
+    tecnicas.forEach(t => tecnicasEncontradas.add(t));
+    
+    // Extrai ingredientes principais
+    const ingredientes = extrairIngredientes(linha);
+    ingredientes.forEach(i => ingredientesUnicos.add(i));
+  });
+  
+  return {
+    dias: diasEncontrados.size,
+    refeicoes: totalRefeicoes,
+    excluidos: ingredientesProibidos?.length || 0,
+    personalizado: Math.round(((culinariasBrasileiras.size + culinariasInternacionais.size + tecnicasEncontradas.size) / 15) * 100),
+    detalhes: {
+      culinariasBrasileiras: Array.from(culinariasBrasileiras),
+      culinariasInternacionais: Array.from(culinariasInternacionais),
+      tecnicas: Array.from(tecnicasEncontradas),
+      ingredientesUnicos: Array.from(ingredientesUnicos).slice(0, 10), // Top 10
+      variedadeCultural: culinariasBrasileiras.size + culinariasInternacionais.size,
+      variedadeTecnica: tecnicasEncontradas.size
+    }
+  };
+}
+
+// Função auxiliar para detectar culinárias
+function detectarCulinarias(texto: string) {
+  const textoNorm = texto.toLowerCase();
+  
+  const brasileiras: string[] = [];
+  const internacionais: string[] = [];
+  
+  // Culinárias brasileiras (palavras-chave)
+  const keywordsBr = {
+    'mineira': ['pão de açúcar', 'feijão tropeiro', 'tutu', 'couve'],
+    'nordestina': ['tapioca', 'cuscuz', 'baião', 'acarajé', 'farofa'],
+    'gaúcha': ['churrasco', 'chimarrão', 'carreteiro'],
+    'baiana': ['moqueca', 'vatapá', 'caruru', 'azeite de dendê'],
+    'amazônica': ['tucumã', 'açaí', 'pirarucu', 'cupuaçu']
+  };
+  
+  // Culinárias internacionais
+  const keywordsInt = {
+    'italiana': ['pasta', 'risotto', 'pizza', 'gnocchi', 'parmesão'],
+    'japonesa': ['sushi', 'sashimi', 'tempura', 'yakisoba', 'miso'],
+    'mexicana': ['tacos', 'guacamole', 'quesadilla', 'salsa'],
+    'indiana': ['curry', 'masala', 'naan', 'tandoori'],
+    'chinesa': ['wok', 'dim sum', 'chow mein'],
+    'francesa': ['ratatouille', 'croissant', 'quiche'],
+    'árabe': ['hummus', 'tabule', 'esfiha', 'kafta']
+  };
+  
+  Object.entries(keywordsBr).forEach(([culinaria, keywords]) => {
+    if (keywords.some(keyword => textoNorm.includes(keyword))) {
+      brasileiras.push(culinaria);
+    }
+  });
+  
+  Object.entries(keywordsInt).forEach(([culinaria, keywords]) => {
+    if (keywords.some(keyword => textoNorm.includes(keyword))) {
+      internacionais.push(culinaria);
+    }
+  });
+  
+  return { brasileiras, internacionais };
+}
+
+// Função auxiliar para detectar técnicas culinárias
+function detectarTecnicas(texto: string) {
+  const textoNorm = texto.toLowerCase();
+  const tecnicas: string[] = [];
+  
+  const keywordsTecnicas = {
+    'grelhado': ['grelhado', 'grelha', 'grilled'],
+    'assado': ['assado', 'forno', 'roasted'],
+    'refogado': ['refogado', 'refogue'],
+    'frito': ['frito', 'fritura', 'fritado'],
+    'cozido': ['cozido', 'cozinha', 'fervido'],
+    'salteado': ['salteado', 'saltear'],
+    'marinado': ['marinado', 'marinada'],
+    'defumado': ['defumado', 'defumar']
+  };
+  
+  Object.entries(keywordsTecnicas).forEach(([tecnica, keywords]) => {
+    if (keywords.some(keyword => textoNorm.includes(keyword))) {
+      tecnicas.push(tecnica);
+    }
+  });
+  
+  return tecnicas;
+}
+
+// Função auxiliar para extrair ingredientes principais
+function extrairIngredientes(texto: string) {
+  const textoNorm = texto.toLowerCase();
+  const ingredientes: string[] = [];
+  
+  const ingredientesComuns = [
+    'frango', 'carne', 'peixe', 'camarão', 'ovo', 'queijo', 'leite',
+    'arroz', 'feijão', 'batata', 'macarrão', 'pão', 'farinha',
+    'tomate', 'cebola', 'alho', 'cenoura', 'abobrinha', 'pimentão',
+    'azeite', 'manteiga', 'sal', 'pimenta', 'açúcar', 'vinagre'
+  ];
+  
+  ingredientesComuns.forEach(ingrediente => {
+    if (textoNorm.includes(ingrediente)) {
+      ingredientes.push(ingrediente);
+    }
+  });
+  
+  return ingredientes;
 }
 
 // Função para validar e combinar resultados das duas partes
@@ -333,6 +524,59 @@ function combinarEValidarResultados(parte1: string, parte2: string): string {
 }
 
 
+// Função para salvar cardápio no histórico do Supabase
+async function salvarCardapioHistorico(userId: string, cardapioData: any, ingredientesProibidos?: string[]) {
+  try {
+    const { data, error } = await supabase
+      .from('cardapio_historico')
+      .insert([{
+        user_id: userId,
+        cardapio_completo: cardapioData.cardapio,
+        pratos_principais: cardapioData.estatisticas?.detalhes?.ingredientesUnicos || [],
+        ingredientes_excluidos: ingredientesProibidos || [],
+        seed_variedade: cardapioData.seedVariedade || '',
+        estatisticas: cardapioData.estatisticas || {},
+        culinarias_brasileiras: cardapioData.estatisticas?.detalhes?.culinariasBrasileiras || [],
+        culinarias_internacionais: cardapioData.estatisticas?.detalhes?.culinariasInternacionais || [],
+        tecnicas_culinarias: cardapioData.estatisticas?.detalhes?.tecnicas || []
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[HISTORY SAVE ERROR]', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('✅ Cardápio salvo no histórico:', data.id);
+    return { success: true, data };
+  } catch (error) {
+    console.error('[HISTORY SAVE ERROR]', error);
+    return { success: false, error: (error instanceof Error ? error.message : String(error)) };
+  }
+}
+
+// Função para buscar pratos recentes do usuário
+async function buscarPratosRecentesUsuario(userId: string, limite: number = 10): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .rpc('buscar_pratos_recentes', {
+        p_user_id: userId,
+        p_limite: limite
+      });
+
+    if (error) {
+      console.error('[RECENT DISHES ERROR]', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('[RECENT DISHES ERROR]', error);
+    return [];
+  }
+}
+
 const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> => {
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -343,15 +587,40 @@ const handler = async (req: VercelRequest, res: VercelResponse): Promise<void> =
     return;
   }
   try {
-    // Permite receber ingredientesProibidos no body (JSON)
+    // Permite receber ingredientesProibidos e userId no body (JSON)
     let ingredientesProibidos: string[] | undefined = undefined;
+    let userId: string | undefined = undefined;
+    
     if (req.body && typeof req.body === 'object') {
       if (Array.isArray(req.body.ingredientesProibidos)) {
         ingredientesProibidos = req.body.ingredientesProibidos.map((i: any) => String(i)).filter(Boolean);
       }
+      if (req.body.userId && typeof req.body.userId === 'string') {
+        userId = req.body.userId;
+      }
     }
-    const cardapio = await gerarCardapioSemanalIA(ingredientesProibidos);
-    res.status(200).json({ success: true, cardapio });
+
+    // Se tiver userId, buscar pratos recentes do usuário para evitar repetições
+    if (userId) {
+      const pratosRecentes = await buscarPratosRecentesUsuario(userId, 15);
+      if (pratosRecentes.length > 0) {
+        // Adicionar pratos recentes ao histórico global para esta requisição
+        cardapioHistorico.push(...pratosRecentes);
+      }
+    }
+
+    const resultado = await gerarCardapioSemanalIA(ingredientesProibidos);
+    
+    // Salvar no histórico do Supabase se tiver userId
+    if (userId) {
+      await salvarCardapioHistorico(userId, resultado, ingredientesProibidos);
+    }
+    
+    res.status(200).json({ 
+      success: true, 
+      cardapio: resultado.cardapio,
+      estatisticas: resultado.estatisticas
+    });
     return;
   } catch (error) {
     console.error('[WEEKLY MENU ERROR]', error);
