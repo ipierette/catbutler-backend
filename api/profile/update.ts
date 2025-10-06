@@ -89,7 +89,11 @@ async function updateProfile(req: AuthenticatedRequest, res: VercelResponse) {
       })
       .select()
     
-    console.log(`[Profile] Profile updated for user ${userId}:`, Object.keys(updateData || {}))
+    console.log(`[Profile] Profile updated for user ${userId}:`, {
+      keys: Object.keys(updateData || {}),
+      data: updateData,
+      result: updatedProfile
+    })
     return sendSuccess(res, updatedProfile)
     
   } catch (error) {
